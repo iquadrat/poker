@@ -60,14 +60,12 @@ std::string Card::toString() const {
 }
 
 std::vector<Card> CardSet::toCardVector() const {
+    // TODO this could be optimized more
     std::vector<Card> result;
-    for (uint32_t color = 0; color < 4; ++color) {
-        for (uint32_t rank = 0; rank < 13; ++rank) {
-            if ((cv.cards[color] & (4 << (rank * 2))) != 0) {
-                result.push_back(
-                        Card(static_cast<Rank>(rank),
-                                static_cast<Color>(color)));
-            }
+    for (uint8_t i = 0; i < 52; ++i) {
+        Card c(i);
+        if (contains(c)) {
+            result.push_back(c);
         }
     }
     return result;
@@ -230,5 +228,32 @@ HandRanking CardSet::rankTexasHoldem() const {
 
     return ranking;
 }
+
+CardSet::Table::Table()  {
+    for(uint8_t i = 0; i<52; ++i) {
+        Card c(i);
+        uint32_t idx = static_cast<uint32_t>(c.getColor());
+        cv[i].cards[idx] = 4 << (static_cast<uint32_t>(c.getRank()) * 2);
+        __m128i hot;
+        switch(static_cast<uint32_t>(c.getColor())) {
+        case 0:
+            hot = _mm_set_epi32(0,0,0,4);
+            break;
+        case 1:
+            hot = _mm_set_epi32(0,0,4,0);
+            break;
+        case 2:
+            hot = _mm_set_epi32(0,4,0,0);
+            break;
+        case 3:
+            hot = _mm_set_epi32(4,0,0,0);
+            break;
+        }
+        uint32_t shift = static_cast<uint32_t>(c.getRank()) * 2;
+        cv[i].v = _mm_sll_epi32(hot, _mm_set_epi32(0,0,0,shift));
+    }
+}
+
+CardSet::Table CardSet::card_table;
 
 } /* namespace poker */

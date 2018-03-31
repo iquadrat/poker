@@ -152,9 +152,7 @@ class CardSet {
 public:
     static CardSet fullDeck() {
         CardVec cv;
-        for (int i = 0; i < 4; ++i) {
-            cv.cards[i] = 0x5555554;
-        }
+        cv.v = _mm_set1_epi32(0x5555554);
         return CardSet(cv);
     }
 
@@ -174,7 +172,7 @@ public:
     }
 
     uint32_t size() const {
-        const uint64_t* c = reinterpret_cast<const uint64_t*>(&cv.cards[0]);
+        const uint64_t* c = reinterpret_cast<const uint64_t*>(&cv.v);
         return _mm_popcnt_u64(c[0]) + _mm_popcnt_u64(c[1]);
     }
 
@@ -190,6 +188,7 @@ public:
                     "Card already contained!" + c.toString());
         }
 #endif
+
         CardVec cv = toCardVec(c);
         this->cv.v = _mm_xor_si128(cv.v, this->cv.v);
     }
@@ -222,15 +221,18 @@ private:
         __m128i v;
     };
 
-    uint32_t fastRandomIndex(uint32_t random, uint32_t cards) {
-        return (static_cast<uint64_t>(random) * cards) >> 32;
-    }
+    class Table {
+    public:
+        Table();
+        CardVec operator[](uint8_t idx) {return cv[idx];}
+    private:
+        CardVec cv[52];
+    };
+
+    static Table card_table;
 
     static CardVec toCardVec(Card c) {
-        CardVec cv;
-        uint32_t idx = static_cast<uint32_t>(c.getColor());
-        cv.cards[idx] = 4 << (static_cast<uint32_t>(c.getRank()) * 2);
-        return cv;
+        return card_table[c.getValue()];
     }
 
     CardSet(const CardVec& cv) :
