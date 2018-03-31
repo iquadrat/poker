@@ -105,6 +105,10 @@ uint32_t erase_lowest_two_bits(uint32_t v) {
     return v;
 }
 
+uint32_t trailing_zeros(uint32_t v) {
+    return __builtin_ctz(v);
+}
+
 template<typename F>
 inline __m128i combine4(__m128i v, F f) {
     __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
@@ -142,39 +146,20 @@ HandRanking CardSet::rankTexasHoldem() const {
         throw new std::runtime_error("Invalid CardSet size: " + size());
     }
 #endif
-
     // Flush: ~0.5ns
-    // TODO merge flush and flush_cards to single int? (more efficient cmov)
-    // TODO use parallel popcnt?
-    // TODO store count in higher bits?
-
-    uint32_t count0 = _mm_popcnt_u32(cv.cards[0]);
-    uint32_t count1 = _mm_popcnt_u32(cv.cards[1]);
-    uint32_t count2 = _mm_popcnt_u32(cv.cards[2]);
-    uint32_t count3 = _mm_popcnt_u32(cv.cards[3]);
-    uint32_t flush = 0;
-    if (unlikely(count0 >= 5)) {
-        flush = count0;
-    }
-    if (unlikely(count1 >= 5)) {
-        flush = (1 << 4) | count1;
-    }
-    if (unlikely(count2 >= 5)) {
-        flush = (2 << 4) | count2;
-    }
-    if (unlikely(count3 >= 5)) {
-        flush = (3 << 4) | count3;
-    }
-    if (unlikely(flush != 0)) {
-        uint32_t flush_cards = cv.cards[flush >> 4];
+    __m128i flush = _mm_cmpgt_epi32(cv.v, _mm_set1_epi32((5 << 28) - 1));
+    if (unlikely(!_mm_test_all_zeros(flush, flush))) {
+        uint32_t color = trailing_zeros(_mm_movemask_epi8(flush)) / 4;
+        uint32_t flush_bits = cv.cards[color];
+        uint32_t flush_cards = flush_bits & ((1 << 28) - 1);
+        uint32_t flush_card_count = flush_bits >> 28;
         uint32_t straight_flush = get_straight(flush_cards);
         if (unlikely(straight_flush != 0)) {
             return HandRanking(HandRanking::STRAIGHT_FLUSH, 0,
                     highest_bit_ranking(straight_flush));
         }
-        uint32_t flush_card_count = flush & 15;
         if (unlikely(flush_card_count > 5)) {
-            flush_cards = erase_lowest_bit(flush_cards);
+          flush_cards = erase_lowest_bit(flush_cards);
         }
         if (unlikely(flush_card_count > 6)) {
             flush_cards = erase_lowest_bit(flush_cards);
@@ -182,14 +167,16 @@ HandRanking CardSet::rankTexasHoldem() const {
         return HandRanking(HandRanking::FLUSH, 0, flush_cards);
     }
 
+    __m128i cards = _mm_and_si128(cv.v, cardMask());
+
     // Check for four of a kind:
     // ~0.15ns
-    __m128i poker = combine4(cv.v, vand);
+    __m128i poker = combine4(cards, vand);
     if (unlikely(!_mm_test_all_zeros(poker, poker))) {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
-        __m128i merged = combine4(cv.v, vor);
+        __m128i merged = combine4(cards, vor); // TODO merge with vor below
         uint32_t poker_bit = _mm_extract_epi32(poker, 0);
         uint32_t side_cards = _mm_extract_epi32(merged, 0) ^ poker_bit;
         return HandRanking(HandRanking::FOUR_OF_A_KIND, poker_bit,
@@ -197,7 +184,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     // straight: ~0.8ns
-    uint32_t colorless = _mm_extract_epi32(combine4(cv.v, vor), 0);
+    uint32_t colorless = _mm_extract_epi32(combine4(cards, vor), 0);
     uint32_t straight = get_straight(colorless);
     if (unlikely(straight != 0)) {
         return HandRanking(HandRanking::STRAIGHT, 0,
@@ -205,7 +192,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     // 3ok: ~0.4ns
-    uint32_t sum = _mm_extract_epi32(combine4(cv.v, vadd), 0);
+    uint32_t sum = _mm_extract_epi32(combine4(cards, vadd), 0);
     uint32_t two_of_a_kind = sum & 0xaaaaaaa;
     uint32_t three_of_a_kind = (sum << 1) & two_of_a_kind;
     two_of_a_kind ^= three_of_a_kind;
@@ -252,20 +239,20 @@ CardSet::Table::Table() {
         __m128i hot;
         switch (static_cast<uint32_t>(c.getColor())) {
         case 0:
-            hot = _mm_set_epi32(0, 0, 0, 4);
+            hot = _mm_set_epi32(0, 0, 0, 1 << 28);
             break;
         case 1:
-            hot = _mm_set_epi32(0, 0, 4, 0);
+            hot = _mm_set_epi32(0, 0, 1 << 28, 0);
             break;
         case 2:
-            hot = _mm_set_epi32(0, 4, 0, 0);
+            hot = _mm_set_epi32(0, 1 << 28, 0, 0);
             break;
         case 3:
-            hot = _mm_set_epi32(4, 0, 0, 0);
+            hot = _mm_set_epi32(1 << 28, 0, 0, 0);
             break;
         }
-        uint32_t shift = static_cast<uint32_t>(c.getRank()) * 2;
-        cv[i].v = _mm_sll_epi32(hot, _mm_set_epi32(0, 0, 0, shift));
+        uint32_t shift = 26 - static_cast<uint32_t>(c.getRank()) * 2;
+        cv[i].v = _mm_or_si128(hot, _mm_srl_epi32(hot, _mm_set_epi32(0, 0, 0, shift)));
     }
 }
 

@@ -152,7 +152,7 @@ class CardSet {
 public:
     static CardSet fullDeck() {
         CardVec cv;
-        cv.v = _mm_set1_epi32(0x5555554);
+        cv.v = _mm_set1_epi32(0xd5555554);
         return CardSet(cv);
     }
 
@@ -174,13 +174,16 @@ public:
     }
 
     uint32_t size() const {
-        const uint64_t* c = reinterpret_cast<const uint64_t*>(&cv.v);
-        return _mm_popcnt_u64(c[0]) + _mm_popcnt_u64(c[1]);
+        __m128i count = _mm_srli_epi32(cv.v, 28);
+        count = _mm_hadd_epi32(count, count);
+        count = _mm_hadd_epi32(count, count);
+        return _mm_extract_epi32(count, 0);
     }
 
     bool contains(Card c) const {
         CardVec v = toCardVec(c);
-        return !_mm_test_all_zeros(cv.v, v.v);
+        __m128i mask = _mm_and_si128(v.v, cardMask());
+        return !_mm_test_all_zeros(cv.v, mask);
     }
 
     void add(Card c) {
@@ -190,9 +193,8 @@ public:
                     "Card already contained!" + c.toString());
         }
 #endif
-
         CardVec cv = toCardVec(c);
-        this->cv.v = _mm_xor_si128(cv.v, this->cv.v);
+        this->cv.v = _mm_add_epi32(cv.v, this->cv.v);
     }
 
     void remove(Card c) {
@@ -201,16 +203,18 @@ public:
             throw new std::runtime_error("Card not contained!" + c.toString());
         }
 #endif
-        add(c);
+        CardVec cv = toCardVec(c);
+        this->cv.v = _mm_sub_epi32(cv.v, this->cv.v);
     }
 
     void addAll(const CardSet& cs) {
 #ifdef CARD_CHECKS
-        if (!_mm_test_all_zeros(cs.cv.v, this->cv.v)) {
+        __m128i mask = _mm_and_si128(cs.cv.v, cardMask());
+        if (!_mm_test_all_zeros(this->cv.v, mask)) {
             throw new std::runtime_error("CardSets are not disjoint!");
         }
 #endif
-        this->cv.v = _mm_or_si128(cs.cv.v, this->cv.v);
+        this->cv.v = _mm_add_epi32(cs.cv.v, this->cv.v);
     }
 
     HandRanking rankTexasHoldem() const;
@@ -237,9 +241,11 @@ private:
         return card_table[c.getValue()];
     }
 
-    CardSet(const CardVec& cv) :
-            cv(cv) {
+    static __m128i cardMask() {
+        return _mm_set1_epi32((1 << 28) - 1);
     }
+
+    CardSet(const CardVec& cv) : cv(cv) {}
 
     CardVec cv;
 };
