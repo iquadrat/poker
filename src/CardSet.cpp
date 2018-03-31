@@ -143,25 +143,36 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 #endif
 
+    // Flush: ~0.5ns
     // TODO merge flush and flush_cards to single int? (more efficient cmov)
     // TODO use parallel popcnt?
     // TODO store count in higher bits?
-    int32_t flush = -1;
-    int32_t flush_card_count = 0;
-    for (int i = 0; i < 4; ++i) {
-        int count = _mm_popcnt_u32(cv.cards[i]);
-        if (count >= 5) {
-            flush = i;
-            flush_card_count = count;
-        }
+
+    uint32_t count0 = _mm_popcnt_u32(cv.cards[0]);
+    uint32_t count1 = _mm_popcnt_u32(cv.cards[1]);
+    uint32_t count2 = _mm_popcnt_u32(cv.cards[2]);
+    uint32_t count3 = _mm_popcnt_u32(cv.cards[3]);
+    uint32_t flush = 0;
+    if (unlikely(count0 >= 5)) {
+        flush = count0;
     }
-    if (unlikely(flush != -1)) {
-        uint32_t flush_cards = cv.cards[flush];
+    if (unlikely(count1 >= 5)) {
+        flush = (1 << 4) | count1;
+    }
+    if (unlikely(count2 >= 5)) {
+        flush = (2 << 4) | count2;
+    }
+    if (unlikely(count3 >= 5)) {
+        flush = (3 << 4) | count3;
+    }
+    if (unlikely(flush != 0)) {
+        uint32_t flush_cards = cv.cards[flush >> 4];
         uint32_t straight_flush = get_straight(flush_cards);
         if (unlikely(straight_flush != 0)) {
             return HandRanking(HandRanking::STRAIGHT_FLUSH, 0,
                     highest_bit_ranking(straight_flush));
         }
+        uint32_t flush_card_count = flush & 15;
         if (unlikely(flush_card_count > 5)) {
             flush_cards = erase_lowest_bit(flush_cards);
         }
@@ -172,6 +183,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     // Check for four of a kind:
+    // ~0.15ns
     __m128i poker = combine4(cv.v, vand);
     if (unlikely(!_mm_test_all_zeros(poker, poker))) {
         // Congratulations! You have a four of a kind!
@@ -184,6 +196,7 @@ HandRanking CardSet::rankTexasHoldem() const {
                 highest_bit_ranking(side_cards));
     }
 
+    // straight: ~0.8ns
     uint32_t colorless = _mm_extract_epi32(combine4(cv.v, vor), 0);
     uint32_t straight = get_straight(colorless);
     if (unlikely(straight != 0)) {
@@ -191,6 +204,7 @@ HandRanking CardSet::rankTexasHoldem() const {
                 highest_bit_ranking(straight));
     }
 
+    // 3ok: ~0.4ns
     uint32_t sum = _mm_extract_epi32(combine4(cv.v, vadd), 0);
     uint32_t two_of_a_kind = sum & 0xaaaaaaa;
     uint32_t three_of_a_kind = (sum << 1) & two_of_a_kind;
@@ -215,8 +229,9 @@ HandRanking CardSet::rankTexasHoldem() const {
                 side_cards);
     }
 
+    // pairs: ~0.5ns
     uint32_t pairs = _mm_popcnt_u32(two_of_a_kind);
-    if (pairs == 3) {
+    if (unlikely(pairs == 3)) {
         // Three pairs, only keep highest two.
         uint32_t tok3 = lowest_bit(two_of_a_kind);
         // Kicker is either highest card not part of any pairs or one of the lowest pair cards.
