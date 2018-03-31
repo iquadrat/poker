@@ -1,6 +1,7 @@
 #include "CardSet.h"
 
 #include <iostream>
+#include <string.h>
 
 namespace poker {
 

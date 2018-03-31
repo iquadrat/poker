@@ -6,6 +6,7 @@
 #include <vector>
 #include <ostream>
 #include <random>
+#include <functional>
 
 #include <stdint.h>
 
@@ -61,6 +62,10 @@ public:
         return o.value == value;
     }
 
+    uint8_t getValue() const {
+        return value;
+    }
+
     Color getColor() const {
         return static_cast<Color>(value / 13);
     }
@@ -84,7 +89,7 @@ private:
     uint8_t value;
 };
 
-static void PrintTo(const Card &c, ::std::ostream* os) {
+inline void PrintTo(const Card &c, ::std::ostream* os) {
     (*os) << c.toString();
 }
 
@@ -207,48 +212,6 @@ public:
         this->cv.v = _mm_or_si128(cs.cv.v, this->cv.v);
     }
 
-    template< class Generator >
-    Card dealRandomCard(Generator& g) {
-        uint64_t* c = reinterpret_cast<uint64_t*>(&cv.cards[0]);
-        uint32_t count_lo = _mm_popcnt_u64(c[0]);
-        uint32_t count_hi = _mm_popcnt_u64(c[1]);
-
-        std::uniform_int_distribution<> dis(0, count_lo + count_hi - 1);
-        uint32_t r = dis(g);
-
-        uint64_t mask;
-        uint64_t s = r;
-        if (r < count_lo) {
-            mask = c[0];
-        } else {
-            mask = c[1];
-            s -= count_lo;
-        }
-
-        for(uint32_t i=0; i<s;++i) {
-            mask = mask & (mask - 1); // clear lowest bit
-        }
-        mask ^= mask & (mask - 1);
-
-        uint32_t color;
-        if (r < count_lo) {
-            color = 0;
-            c[0] ^= mask;
-        } else {
-            color = 2;
-            c[1] ^= mask;
-        }
-
-        uint32_t card = __builtin_ctzll(mask);
-        color += card / 32;
-        card = (card % 32);
-        card = card / 2;
-        card = card - 1;
-
-        return Card(static_cast<Rank>(card), static_cast<Color>(color));
-    }
-
-
     HandRanking rankTexasHoldem() const;
 
     std::vector<Card> toCardVector() const;
@@ -258,6 +221,10 @@ private:
         uint32_t cards[4] = { 0, 0, 0, 0 };
         __m128i v;
     };
+
+    uint32_t fastRandomIndex(uint32_t random, uint32_t cards) {
+        return (static_cast<uint64_t>(random) * cards) >> 32;
+    }
 
     static CardVec toCardVec(Card c) {
         CardVec cv;
@@ -273,6 +240,41 @@ private:
     CardVec cv;
 };
 
-} /* namespace poker */
+class FastDeck {
+public:
+    FastDeck() : random(std::random_device()()) {
+        __m128i* cv= reinterpret_cast<__m128i*>(cards);
+        cv[0] = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        cv[1] = _mm_setr_epi8(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        cv[2] = _mm_setr_epi8(32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47);
+        cv[3] = _mm_setr_epi8(48, 49, 50, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    void shuffle() {
+        remaining = 52;
+    }
+
+    Card deal() {
+#ifdef CARD_CHECKS
+        if (remaining == 0) {
+            throw new std::runtime_error("No remaining cards!");
+        }
+#endif
+        // Note: This has a slight bias towards lower indices.
+        uint32_t index = (static_cast<uint64_t>(random()) * remaining) >> 32;
+        uint32_t card = cards[index];
+        remaining--;
+        std::swap(cards[remaining], cards[index]);
+        return Card(card);
+    }
+
+private:
+    uint8_t cards[64];
+    int32_t remaining = 0;
+    std::mt19937 random;
+};
+
+}
+/* namespace poker */
 
 #endif /* CARDSET_H_ */

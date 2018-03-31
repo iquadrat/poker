@@ -67,21 +67,31 @@ void assert_ranking(HandRanking::Ranking expected, HandRanking ranking) {
     }
 }
 
-void BM_deal_full_table_th(benchmark::State& state) {
-    std::default_random_engine generator;
-
+void BM_fast_deck_deal(benchmark::State& state) {
+    FastDeck deck;
     for (auto _ : state) {
-        CardSet deck = CardSet::fullDeck();
+        deck.shuffle();
+        for (int i = 0; i < 8*2+5; ++i) {
+            benchmark::DoNotOptimize(deck.deal());
+        }
+    }
+}
+BENCHMARK(BM_fast_deck_deal);
+
+void BM_deal_full_table_th(benchmark::State& state) {
+    FastDeck deck;
+    for (auto _ : state) {
+        deck.shuffle();
         CardSet table;
         for (int i = 0; i < 5; ++i) {
-            table.add(deck.dealRandomCard(generator));
+            table.add(deck.deal());
         }
 
         CardSet player[8];
         for (int i = 0; i < 8; ++i) {
             player[i].addAll(table);
-            player[i].add(deck.dealRandomCard(generator));
-            player[i].add(deck.dealRandomCard(generator));
+            player[i].add(deck.deal());
+            player[i].add(deck.deal());
         }
         for (int i = 0; i < 8; ++i) {
             benchmark::DoNotOptimize(player[i].contains(_AC));
@@ -91,20 +101,19 @@ void BM_deal_full_table_th(benchmark::State& state) {
 BENCHMARK(BM_deal_full_table_th);
 
 void BM_deal_and_rank_full_table_th(benchmark::State& state) {
-    std::default_random_engine generator;
-
+    FastDeck deck;
     for (auto _ : state) {
-        CardSet deck = CardSet::fullDeck();
+        deck.shuffle();
         CardSet table;
         for (int i = 0; i < 5; ++i) {
-            table.add(deck.dealRandomCard(generator));
+            table.add(deck.deal());
         }
 
         CardSet player[8];
         for (int i = 0; i < 8; ++i) {
             player[i].addAll(table);
-            player[i].add(deck.dealRandomCard(generator));
-            player[i].add(deck.dealRandomCard(generator));
+            player[i].add(deck.deal());
+            player[i].add(deck.deal());
         }
         for (int i = 0; i < 8; ++i) {
             benchmark::DoNotOptimize(player[i].rankTexasHoldem());
@@ -114,18 +123,18 @@ void BM_deal_and_rank_full_table_th(benchmark::State& state) {
 BENCHMARK(BM_deal_and_rank_full_table_th);
 
 void BM_rank_full_table_th(benchmark::State& state) {
-    std::default_random_engine generator(99);
-    CardSet deck = CardSet::fullDeck();
+    FastDeck deck;
+    deck.shuffle();
     CardSet table;
     for (int i = 0; i < 5; ++i) {
-        table.add(deck.dealRandomCard(generator));
+        table.add(deck.deal());
     }
 
     CardSet player[8];
     for (int i = 0; i < 8; ++i) {
         player[i].addAll(table);
-        player[i].add(deck.dealRandomCard(generator));
-        player[i].add(deck.dealRandomCard(generator));
+        player[i].add(deck.deal());
+        player[i].add(deck.deal());
     }
 
     for (auto _ : state) {
@@ -171,7 +180,6 @@ void BM_rank_th_straight(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_rank_th_straight);
-
 
 }
 

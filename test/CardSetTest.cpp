@@ -5,8 +5,6 @@
 
 namespace poker {
 
-
-
 TEST(Card, RankAndColor) {
     Card c1(Rank::Q, Color::DIAMONDS);
     Card c2(Rank::_3, Color::HEARTS);
@@ -84,15 +82,16 @@ TEST(CardSet, addAllCardSet) {
     ASSERT_EQ(4, cs1.size());
 }
 
-TEST(CardSet, dealRandomCard) {
-    CardSet cs1 = cs1.fullDeck();
+TEST(FastDeck, deal) {
+    FastDeck deck;
+    CardSet cs1;
 
-    std::default_random_engine generator;
+    deck.shuffle();
 
     uint64_t dealt = 0;
     for(int i=0; i<52; ++i) {
-        Card c = cs1.dealRandomCard(generator);
-        uint64_t mask = static_cast<uint64_t>(1) << ((static_cast<uint32_t>(c.getColor()) * 13) + static_cast<uint32_t>(c.getRank()));
+        Card c = deck.deal();
+        uint64_t mask = static_cast<uint64_t>(1) << c.getValue();
         ASSERT_EQ(0, dealt & mask) << "Iteration " << i;
         dealt |= mask;
     }
