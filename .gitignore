@@ -2,3 +2,4 @@ Test
 Debug
 Release
 BENCH
+src/*.s
