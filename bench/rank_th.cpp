@@ -220,6 +220,15 @@ void BM_rank_th_straight(benchmark::State& state) {
 }
 BENCHMARK(BM_rank_th_straight);
 
+void BM_rank_th_flush(benchmark::State& state) {
+    CardSet cards = CardSet( { _2H, _4H, _5D, _6H, _7H, _8S, _9C });
+    assert_ranking(HandRanking::STRAIGHT, cards.rankTexasHoldem());
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(cards.rankTexasHoldem());
+    }
+}
+BENCHMARK(BM_rank_th_flush);
+
 }
 
 BENCHMARK_MAIN()

@@ -146,7 +146,7 @@ HandRanking CardSet::rankTexasHoldem() const {
         throw new std::runtime_error("Invalid CardSet size: " + size());
     }
 #endif
-    // Flush: ~0.5ns
+    // Flush: ~0.1ns
     __m128i flush = _mm_cmpgt_epi32(cv.v, _mm_set1_epi32((5 << 28) - 1));
     if (unlikely(!_mm_test_all_zeros(flush, flush))) {
         uint32_t color = trailing_zeros(_mm_movemask_epi8(flush)) / 4;
@@ -154,20 +154,21 @@ HandRanking CardSet::rankTexasHoldem() const {
         uint32_t flush_cards = flush_bits & ((1 << 28) - 1);
         uint32_t flush_card_count = flush_bits >> 28;
         uint32_t straight_flush = get_straight(flush_cards);
-        if (unlikely(straight_flush != 0)) {
+        if (straight_flush != 0) {
             return HandRanking(HandRanking::STRAIGHT_FLUSH, 0,
                     highest_bit_ranking(straight_flush));
         }
-        if (unlikely(flush_card_count > 5)) {
+        if (flush_card_count > 5) {
           flush_cards = erase_lowest_bit(flush_cards);
         }
-        if (unlikely(flush_card_count > 6)) {
+        if (flush_card_count > 6) {
             flush_cards = erase_lowest_bit(flush_cards);
         }
         return HandRanking(HandRanking::FLUSH, 0, flush_cards);
     }
 
     __m128i cards = _mm_and_si128(cv.v, cardMask());
+    uint32_t colorless = _mm_extract_epi32(combine4(cards, vor), 0);
 
     // Check for four of a kind:
     // ~0.15ns
@@ -176,15 +177,13 @@ HandRanking CardSet::rankTexasHoldem() const {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
-        __m128i merged = combine4(cards, vor); // TODO merge with vor below
         uint32_t poker_bit = _mm_extract_epi32(poker, 0);
-        uint32_t side_cards = _mm_extract_epi32(merged, 0) ^ poker_bit;
+        uint32_t side_cards = colorless ^ poker_bit;
         return HandRanking(HandRanking::FOUR_OF_A_KIND, poker_bit,
                 highest_bit_ranking(side_cards));
     }
 
     // straight: ~0.8ns
-    uint32_t colorless = _mm_extract_epi32(combine4(cards, vor), 0);
     uint32_t straight = get_straight(colorless);
     if (unlikely(straight != 0)) {
         return HandRanking(HandRanking::STRAIGHT, 0,
