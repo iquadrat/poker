@@ -1,11 +1,12 @@
 #ifndef CARDSET_H_
 #define CARDSET_H_
 
+#include "SFMT.h"
+
 #include <string>
 #include <tuple>
 #include <vector>
 #include <ostream>
-#include <random>
 #include <functional>
 
 #include <stdint.h>
@@ -252,7 +253,8 @@ private:
 
 class FastDeck {
 public:
-    FastDeck() : random(std::random_device()()) {
+    FastDeck() {
+        sfmt_init_gen_rand(&sfmt, 12345);
         __m128i* cv= reinterpret_cast<__m128i*>(cards);
         cv[0] = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
         cv[1] = _mm_setr_epi8(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
@@ -271,7 +273,8 @@ public:
         }
 #endif
         // Note: This has a slight bias towards lower indices.
-        uint32_t index = (static_cast<uint64_t>(random()) * remaining) >> 32;
+        uint32_t random = sfmt_genrand_uint32(&sfmt);
+        uint32_t index = (static_cast<uint64_t>(random) * remaining) >> 32;
         uint32_t card = cards[index];
         remaining--;
         std::swap(cards[remaining], cards[index]);
@@ -281,7 +284,7 @@ public:
 private:
     uint8_t cards[64];
     int32_t remaining = 0;
-    std::mt19937 random;
+    sfmt_t sfmt;
 };
 
 }

@@ -1,9 +1,11 @@
 #include "CardSet.h"
+#include "SFMT.h"
 
 #include <iostream>
 #include <stdint.h>
 
 #include "immintrin.h"
+
 
 namespace poker {
 
@@ -105,6 +107,12 @@ void run() {
 }
 
 int main() {
+
+    sfmt_t sfmt;
+    sfmt_init_gen_rand(&sfmt, 12345);
+
+    uint32_t random = sfmt_genrand_uint32(&sfmt);
+    std::cout << random << std::endl;
 
     poker::run();
 

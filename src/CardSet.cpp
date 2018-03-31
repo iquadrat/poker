@@ -185,7 +185,7 @@ HandRanking CardSet::rankTexasHoldem() const {
 
     // straight: ~0.8ns
     uint32_t straight = get_straight(colorless);
-    if (unlikely(straight != 0)) {
+    if (straight != 0) {
         return HandRanking(HandRanking::STRAIGHT, 0,
                 highest_bit_ranking(straight));
     }
