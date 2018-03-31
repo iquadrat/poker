@@ -1,6 +1,9 @@
 #include "CardSet.h"
 
 #include <benchmark/benchmark.h>
+#include <memory>
+#include <string.h>
+#include <iostream>
 
 namespace poker {
 
@@ -100,8 +103,31 @@ void BM_deal_full_table_th(benchmark::State& state) {
 }
 BENCHMARK(BM_deal_full_table_th);
 
+class RankTable {
+public:
+    RankTable() {memset(count,0,9*sizeof(uint32_t));}
+
+    void add(HandRanking ranking) {
+        count[static_cast<int>(ranking.getRanking())]++;
+        sum++;
+    }
+
+    void print() {
+        std::cout << "sum: " << sum << std::endl;
+        for(int i=0; i<9; ++i) {
+            double frac = 1.0 * count[i] / sum;
+            std::cout << i << ": " << count[i] << " = " << frac << std::endl;
+        }
+    }
+
+private:
+    uint32_t sum = 0;
+    uint32_t count[9];
+};
+
 void BM_deal_and_rank_full_table_th(benchmark::State& state) {
     FastDeck deck;
+    RankTable rt;
     for (auto _ : state) {
         deck.shuffle();
         CardSet table;
@@ -117,31 +143,44 @@ void BM_deal_and_rank_full_table_th(benchmark::State& state) {
         }
         for (int i = 0; i < 8; ++i) {
             benchmark::DoNotOptimize(player[i].rankTexasHoldem());
+            //rt.add(player[i].rankTexasHoldem());
         }
     }
+    //rt.print();
 }
 BENCHMARK(BM_deal_and_rank_full_table_th);
 
 void BM_rank_full_table_th(benchmark::State& state) {
-    FastDeck deck;
-    deck.shuffle();
-    CardSet table;
-    for (int i = 0; i < 5; ++i) {
-        table.add(deck.deal());
-    }
+    constexpr int tables = 100;
 
-    CardSet player[8];
-    for (int i = 0; i < 8; ++i) {
-        player[i].addAll(table);
-        player[i].add(deck.deal());
-        player[i].add(deck.deal());
+    FastDeck deck;
+    RankTable rt;
+    std::unique_ptr<CardSet[]> hands(new CardSet[8 * tables]);
+
+    for(int t = 0; t<tables; ++t) {
+        deck.shuffle();
+        CardSet table;
+        for (int i = 0; i < 5; ++i) {
+            table.add(deck.deal());
+        }
+
+        CardSet* player = &hands[8*t];
+        for (int i = 0; i < 8; ++i) {
+            player[i].addAll(table);
+            player[i].add(deck.deal());
+            player[i].add(deck.deal());
+        }
     }
 
     for (auto _ : state) {
-        for (int i = 0; i < 8; ++i) {
-            benchmark::DoNotOptimize(player[i].rankTexasHoldem());
+        for (int i = 0; i < 8 * tables; ++i) {
+            poker::HandRanking r = hands[i].rankTexasHoldem();
+            benchmark::DoNotOptimize(r);
+            //rt.add(r);
+            //std::cout << "r = " << r.getRanking() << std::endl;
         }
     }
+    //rt.print();
 }
 BENCHMARK(BM_rank_full_table_th);
 

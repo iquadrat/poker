@@ -156,16 +156,18 @@ public:
         return CardSet(cv);
     }
 
-    CardSet() = default;
+    CardSet() {
+        cv.v = _mm_setzero_si128();
+    }
 
     template<typename C>
-    CardSet(const C& cards) {
+    CardSet(const C& cards): CardSet() {
         for (const Card& card : cards) {
             add(card);
         }
     }
 
-    CardSet(const std::initializer_list<Card>& cards) {
+    CardSet(const std::initializer_list<Card>& cards): CardSet() {
         for (const Card& card : cards) {
             add(card);
         }
@@ -217,7 +219,7 @@ public:
 
 private:
     union CardVec {
-        uint32_t cards[4] = { 0, 0, 0, 0 };
+        uint32_t cards[4];
         __m128i v;
     };
 
