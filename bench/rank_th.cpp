@@ -229,6 +229,15 @@ void BM_rank_th_flush(benchmark::State& state) {
 }
 BENCHMARK(BM_rank_th_flush);
 
+void BM_rank_th_three_of_kind(benchmark::State& state) {
+    CardSet cards = CardSet( { _2H, _4H, _5D, _5H, _5S, _8S, _9C });
+    assert_ranking(HandRanking::THREE_OF_A_KIND, cards.rankTexasHoldem());
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(cards.rankTexasHoldem());
+    }
+}
+BENCHMARK(BM_rank_th_three_of_kind);
+
 }
 
 BENCHMARK_MAIN()

@@ -197,12 +197,10 @@ HandRanking CardSet::rankTexasHoldem() const {
     two_of_a_kind ^= three_of_a_kind;
 
     if (unlikely(three_of_a_kind != 0)) {
-        if (unlikely(multiple_bits_set(three_of_a_kind))) {
+        if (multiple_bits_set(three_of_a_kind)) {
           // Two three-of-a-kind. The lower one is our pair for the full house.
           two_of_a_kind = lowest_bit(three_of_a_kind);
           three_of_a_kind ^= two_of_a_kind;
-          return HandRanking(HandRanking::FULL_HOUSE, three_of_a_kind,
-                  highest_bit_ranking(two_of_a_kind));
         }
         if (two_of_a_kind != 0) {
             // Full house!
