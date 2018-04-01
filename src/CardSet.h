@@ -31,7 +31,7 @@ enum class Rank {
     _7 = 5,
     _8 = 6,
     _9 = 7,
-    _10 = 8,
+    _T = 8,
     J = 9,
     Q = 10,
     K = 11,
@@ -41,21 +41,21 @@ enum class Rank {
 std::string toString(Rank rank);
 
 class Card {
-
+    constexpr static uint8_t COLOR_MULT = 16;
 public:
     constexpr static uint8_t COUNT = 13 * 4;
 
-    Card(Rank rank, Color color) :
-            Card(static_cast<int>(rank) + 13 * static_cast<int>(color)) {
+    constexpr Card(Rank rank, Color color) :
+            value(static_cast<int>(rank) + COLOR_MULT * static_cast<int>(color)) {
     }
 
-    explicit Card(uint8_t value) :
-            value(value) {
-#ifdef CARD_CHECKS
-        if (value >= COUNT)
-            throw new std::string("Invalid card value " + value);
-#endif
-    }
+    /*    explicit Card(uint8_t value) :
+     value(value) {
+     #ifdef CARD_CHECKS
+     if (value >= COUNT)
+     throw new std::string("Invalid card value " + value);
+     #endif
+     }*/
 
     Card(const Card&) = default;
     Card& operator=(const Card&) = default;
@@ -68,11 +68,11 @@ public:
     }
 
     Color getColor() const {
-        return static_cast<Color>(value / 13);
+        return static_cast<Color>(value / COLOR_MULT);
     }
 
     Rank getRank() const {
-        return static_cast<Rank>(value % 13);
+        return static_cast<Rank>(value % COLOR_MULT);
     }
 
     std::tuple<Rank, Color> getRankColor() const {
@@ -81,13 +81,23 @@ public:
 
     std::string toString() const;
 
-    ::std::ostream& operator<<(::std::ostream& os) {
+    ::std::ostream& operator<<(::std::ostream& os) const {
         os << toString();
         return os;
     }
 
 private:
-    uint8_t value;
+    explicit Card(uint8_t value) :
+            value(value) {
+#ifdef CARD_CHECKS
+        if (value >= COUNT)
+        throw new std::string("Invalid card value " + value);
+#endif
+    }
+
+    friend class FastDeck;
+
+    const uint8_t value;
 };
 
 inline void PrintTo(const Card &c, ::std::ostream* os) {
@@ -162,13 +172,15 @@ public:
     }
 
     template<typename C>
-    CardSet(const C& cards): CardSet() {
+    CardSet(const C& cards) :
+            CardSet() {
         for (const Card& card : cards) {
             add(card);
         }
     }
 
-    CardSet(const std::initializer_list<Card>& cards): CardSet() {
+    CardSet(const std::initializer_list<Card>& cards) :
+            CardSet() {
         for (const Card& card : cards) {
             add(card);
         }
@@ -178,13 +190,13 @@ public:
         __m128i count = _mm_srli_epi32(cv.v, 28);
         count = _mm_hadd_epi32(count, count);
         count = _mm_hadd_epi32(count, count);
-        return _mm_extract_epi32(count, 0);
+        return _mm_cvtsi128_si32(count);
     }
 
     bool contains(Card c) const {
         CardVec v = toCardVec(c);
         __m128i mask = _mm_and_si128(v.v, cardMask());
-        return !_mm_test_all_zeros(cv.v, mask);
+        return !all_zeros(cv.v, mask);
     }
 
     void add(Card c) {
@@ -211,7 +223,7 @@ public:
     void addAll(const CardSet& cs) {
 #ifdef CARD_CHECKS
         __m128i mask = _mm_and_si128(cs.cv.v, cardMask());
-        if (!_mm_test_all_zeros(this->cv.v, mask)) {
+        if (!all_zeros(this->cv.v, mask)) {
             throw new std::runtime_error("CardSets are not disjoint!");
         }
 #endif
@@ -224,43 +236,68 @@ public:
 
 private:
     union CardVec {
-        uint32_t cards[4];
+        uint32_t cards[4] = { 0, 0, 0, 0 };
         __m128i v;
     };
 
     class Table {
     public:
         Table();
-        CardVec operator[](uint8_t idx) {return cv[idx];}
+        CardVec operator[](uint8_t idx) {
+            return cv[idx];
+        }
     private:
-        CardVec cv[52];
+        CardVec cv[64];
     };
+
+    static bool all_zeros(__m128i v) {
+#ifdef __SSE4_1__
+        return _mm_testz_si128(v, v);
+#endif
+        return _mm_movemask_epi8(_mm_cmpeq_epi32(v, _mm_setzero_si128()))
+                == 0xffff;
+    }
+
+    static bool all_zeros(__m128i v, __m128i mask) {
+#ifdef __SSE4_1__
+        return _mm_testz_si128(v, mask);
+#endif
+        return all_zeros(_mm_and_si128(v, mask));
+    }
 
     static Table card_table;
 
     static CardVec toCardVec(Card c) {
+#ifdef NO_CARD_TABLE
+        return internalToCardVec(c);
+#else
         return card_table[c.getValue()];
+#endif
+    }
+
+    static CardVec internalToCardVec(Card c) {
+        CardVec cv;
+        cv.v = _mm_setzero_si128();
+        uint32_t shift = 26 - static_cast<uint32_t>(c.getRank()) * 2;
+        cv.cards[static_cast<uint32_t>(c.getColor())] = (1 << 28)
+                | ((1 << 28) >> shift);
+        return cv;
     }
 
     static __m128i cardMask() {
         return _mm_set1_epi32((1 << 28) - 1);
     }
 
-    CardSet(const CardVec& cv) : cv(cv) {}
+    CardSet(const CardVec& cv) :
+            cv(cv) {
+    }
 
     CardVec cv;
 };
 
 class FastDeck {
 public:
-    FastDeck() {
-        sfmt_init_gen_rand(&sfmt, 12345);
-        __m128i* cv= reinterpret_cast<__m128i*>(cards);
-        cv[0] = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-        cv[1] = _mm_setr_epi8(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
-        cv[2] = _mm_setr_epi8(32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47);
-        cv[3] = _mm_setr_epi8(48, 49, 50, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    }
+    FastDeck();
 
     void shuffle() {
         remaining = 52;

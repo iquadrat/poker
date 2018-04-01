@@ -1,4 +1,5 @@
 #include "CardSet.h"
+#include "AllCards.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -84,83 +85,20 @@ TEST(CardSet, addAllCardSet) {
 
 TEST(FastDeck, deal) {
     FastDeck deck;
-    CardSet cs1;
+    CardSet cs;
 
     deck.shuffle();
 
     uint64_t dealt = 0;
     for(int i=0; i<52; ++i) {
         Card c = deck.deal();
+        cs.add(c);
         uint64_t mask = static_cast<uint64_t>(1) << c.getValue();
         ASSERT_EQ(0, dealt & mask) << "Iteration " << i;
         dealt |= mask;
     }
-
-    ASSERT_EQ((1ULL << 52) - 1, dealt);
+    ASSERT_EQ(52, cs.size());
 }
-
-Card _JC(Rank::J, Color::CLUBS);
-
-Card _2C(Rank::_2, Color::CLUBS);
-Card _2D(Rank::_2, Color::DIAMONDS);
-Card _2H(Rank::_2, Color::HEARTS);
-Card _2S(Rank::_2, Color::SPADES);
-
-Card _3C(Rank::_3, Color::CLUBS);
-Card _3D(Rank::_3, Color::DIAMONDS);
-Card _3H(Rank::_3, Color::HEARTS);
-Card _3S(Rank::_3, Color::SPADES);
-
-Card _4C(Rank::_4, Color::CLUBS);
-Card _4D(Rank::_4, Color::DIAMONDS);
-Card _4H(Rank::_4, Color::HEARTS);
-Card _4S(Rank::_4, Color::SPADES);
-
-Card _5C(Rank::_5, Color::CLUBS);
-Card _5D(Rank::_5, Color::DIAMONDS);
-Card _5H(Rank::_5, Color::HEARTS);
-Card _5S(Rank::_5, Color::SPADES);
-
-Card _6C(Rank::_6, Color::CLUBS);
-Card _6D(Rank::_6, Color::DIAMONDS);
-Card _6H(Rank::_6, Color::HEARTS);
-Card _6S(Rank::_6, Color::SPADES);
-
-Card _7C(Rank::_7, Color::CLUBS);
-Card _7D(Rank::_7, Color::DIAMONDS);
-Card _7H(Rank::_7, Color::HEARTS);
-Card _7S(Rank::_7, Color::SPADES);
-
-Card _8C(Rank::_8, Color::CLUBS);
-Card _8D(Rank::_8, Color::DIAMONDS);
-Card _8H(Rank::_8, Color::HEARTS);
-Card _8S(Rank::_8, Color::SPADES);
-
-Card _9C(Rank::_9, Color::CLUBS);
-Card _9D(Rank::_9, Color::DIAMONDS);
-Card _9H(Rank::_9, Color::HEARTS);
-Card _9S(Rank::_9, Color::SPADES);
-
-Card _TC(Rank::_10, Color::CLUBS);
-Card _TD(Rank::_10, Color::DIAMONDS);
-Card _TH(Rank::_10, Color::HEARTS);
-Card _TS(Rank::_10, Color::SPADES);
-
-Card _QC(Rank::Q, Color::CLUBS);
-Card _QD(Rank::Q, Color::DIAMONDS);
-Card _QH(Rank::Q, Color::HEARTS);
-Card _QS(Rank::Q, Color::SPADES);
-
-Card _KC(Rank::K, Color::CLUBS);
-Card _KD(Rank::K, Color::DIAMONDS);
-Card _KH(Rank::K, Color::HEARTS);
-Card _KS(Rank::K, Color::SPADES);
-
-Card _AC(Rank::A, Color::CLUBS);
-Card _AD(Rank::A, Color::DIAMONDS);
-Card _AH(Rank::A, Color::HEARTS);
-Card _AS(Rank::A, Color::SPADES);
-
 
 TEST(CardSet, contains) {
     CardSet cs( { _JC, _8H, _4H, _AD, _AS });

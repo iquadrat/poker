@@ -1,4 +1,5 @@
 #include "CardSet.h"
+#include "AllCards.h"
 
 #include <iostream>
 #include <string.h>
@@ -38,7 +39,7 @@ std::string toString(Rank rank) {
         return "8";
     case Rank::_9:
         return "9";
-    case Rank::_10:
+    case Rank::_T:
         return "T";
     case Rank::J:
         return "J";
@@ -62,10 +63,12 @@ std::string Card::toString() const {
 std::vector<Card> CardSet::toCardVector() const {
     // TODO this could be optimized more
     std::vector<Card> result;
-    for (uint8_t i = 0; i < 52; ++i) {
-        Card c(i);
-        if (contains(c)) {
-            result.push_back(c);
+    for (uint8_t c = 0; c < 4; ++c) {
+        for (uint8_t r = 0; r < 13; ++r) {
+            Card card(static_cast<Rank>(r), static_cast<Color>(c));
+            if (contains(card)) {
+                result.push_back(card);
+            }
         }
     }
     return result;
@@ -87,22 +90,22 @@ bool multiple_bits_set(uint32_t v) {
     return v & (v - 1);
 }
 
-uint32_t highest_bit_ranking(uint32_t v) {
-    return -__builtin_clz(v);
-}
-
 uint32_t lowest_bit(uint32_t v) {
-    return v & ~(v-1);
+    return v & (-v);
 }
 
 uint32_t erase_lowest_bit(uint32_t v) {
-    return v & (v-1);
+    return v & (v - 1);
 }
 
 uint32_t erase_lowest_two_bits(uint32_t v) {
     v &= (v - 1);
     v &= (v - 1);
     return v;
+}
+
+uint32_t highest_bit_ranking(uint32_t v) {
+    return -__builtin_clz(v);
 }
 
 uint32_t trailing_zeros(uint32_t v) {
@@ -148,7 +151,7 @@ HandRanking CardSet::rankTexasHoldem() const {
 #endif
     // Flush: ~0.1ns
     __m128i flush = _mm_cmpgt_epi32(cv.v, _mm_set1_epi32((5 << 28) - 1));
-    if (unlikely(!_mm_test_all_zeros(flush, flush))) {
+    if (unlikely(!all_zeros(flush))) {
         uint32_t color = trailing_zeros(_mm_movemask_epi8(flush)) / 4;
         uint32_t flush_bits = cv.cards[color];
         uint32_t flush_cards = flush_bits & ((1 << 28) - 1);
@@ -159,7 +162,7 @@ HandRanking CardSet::rankTexasHoldem() const {
                     highest_bit_ranking(straight_flush));
         }
         if (flush_card_count > 5) {
-          flush_cards = erase_lowest_bit(flush_cards);
+            flush_cards = erase_lowest_bit(flush_cards);
         }
         if (flush_card_count > 6) {
             flush_cards = erase_lowest_bit(flush_cards);
@@ -168,16 +171,16 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     __m128i cards = _mm_and_si128(cv.v, cardMask());
-    uint32_t colorless = _mm_extract_epi32(combine4(cards, vor), 0);
+    uint32_t colorless = _mm_cvtsi128_si32(combine4(cards, vor));
 
     // Check for four of a kind:
     // ~0.15ns
     __m128i poker = combine4(cards, vand);
-    if (unlikely(!_mm_test_all_zeros(poker, poker))) {
+    if (unlikely(!all_zeros(poker))) {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
-        uint32_t poker_bit = _mm_extract_epi32(poker, 0);
+        uint32_t poker_bit = _mm_cvtsi128_si32(poker);
         uint32_t side_cards = colorless ^ poker_bit;
         return HandRanking(HandRanking::FOUR_OF_A_KIND, poker_bit,
                 highest_bit_ranking(side_cards));
@@ -191,16 +194,16 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     // 3ok: ~0.4ns
-    uint32_t sum = _mm_extract_epi32(combine4(cards, vadd), 0);
+    uint32_t sum = _mm_cvtsi128_si32(combine4(cards, vadd));
     uint32_t two_of_a_kind = sum & 0xaaaaaaa;
     uint32_t three_of_a_kind = (sum << 1) & two_of_a_kind;
     two_of_a_kind ^= three_of_a_kind;
 
     if (unlikely(three_of_a_kind != 0)) {
         if (multiple_bits_set(three_of_a_kind)) {
-          // Two three-of-a-kind. The lower one is our pair for the full house.
-          two_of_a_kind = lowest_bit(three_of_a_kind);
-          three_of_a_kind ^= two_of_a_kind;
+            // Two three-of-a-kind. The lower one is our pair for the full house.
+            two_of_a_kind = lowest_bit(three_of_a_kind);
+            three_of_a_kind ^= two_of_a_kind;
         }
         if (two_of_a_kind != 0) {
             // Full house!
@@ -213,9 +216,19 @@ HandRanking CardSet::rankTexasHoldem() const {
                 side_cards);
     }
 
-    // pairs: ~0.5ns
+#ifdef __POPCNT__
     uint32_t pairs = _mm_popcnt_u32(two_of_a_kind);
-    if (unlikely(pairs == 3)) {
+    bool has_three_pairs = (pairs == 3);
+#else
+    // Emulate popcnt for 0-2 bits:
+    uint32_t remaining_pairs = two_of_a_kind;
+    uint32_t pairs = (remaining_pairs == 0) ? 0 : 1;
+    remaining_pairs = erase_lowest_bit(remaining_pairs);
+    pairs += (remaining_pairs == 0) ? 0 : 1;
+    remaining_pairs = erase_lowest_bit(remaining_pairs);
+    bool has_three_pairs = (remaining_pairs != 0);
+#endif
+    if (unlikely(has_three_pairs)) {
         // Three pairs, only keep highest two.
         uint32_t tok3 = lowest_bit(two_of_a_kind);
         // Kicker is either highest card not part of any pairs or one of the lowest pair cards.
@@ -225,34 +238,35 @@ HandRanking CardSet::rankTexasHoldem() const {
 
     // Zero to two pairs. Kicker are those cards that remain after removing the pairs and the lowest two cards.
     uint32_t side_cards = erase_lowest_two_bits(sum ^ two_of_a_kind);
-    return HandRanking(static_cast<HandRanking::Ranking>(pairs), two_of_a_kind, side_cards);
+    return HandRanking(static_cast<HandRanking::Ranking>(pairs), two_of_a_kind,
+            side_cards);
 }
 
 CardSet::Table::Table() {
-    for (uint8_t i = 0; i < 52; ++i) {
-        Card c(i);
-        uint32_t idx = static_cast<uint32_t>(c.getColor());
-        cv[i].cards[idx] = 4 << (static_cast<uint32_t>(c.getRank()) * 2);
-        __m128i hot;
-        switch (static_cast<uint32_t>(c.getColor())) {
-        case 0:
-            hot = _mm_set_epi32(0, 0, 0, 1 << 28);
-            break;
-        case 1:
-            hot = _mm_set_epi32(0, 0, 1 << 28, 0);
-            break;
-        case 2:
-            hot = _mm_set_epi32(0, 1 << 28, 0, 0);
-            break;
-        case 3:
-            hot = _mm_set_epi32(1 << 28, 0, 0, 0);
-            break;
+    for (uint8_t c = 0; c < 4; ++c) {
+        for (uint8_t r = 0; r < 13; ++r) {
+            Card card(static_cast<Rank>(r), static_cast<Color>(c));
+            cv[card.getValue()] = internalToCardVec(card);
         }
-        uint32_t shift = 26 - static_cast<uint32_t>(c.getRank()) * 2;
-        cv[i].v = _mm_or_si128(hot, _mm_srl_epi32(hot, _mm_set_epi32(0, 0, 0, shift)));
     }
 }
 
 CardSet::Table CardSet::card_table;
+
+FastDeck::FastDeck() {
+    sfmt_init_gen_rand(&sfmt, 12345);
+    __m128i* cv= reinterpret_cast<__m128i*>(cards);
+    cv[0] = _mm_setr_epi8(_2C.value, _3C.value, _4C.value, _5C.value, _6C.value,
+            _7C.value, _8C.value, _9C.value, _TC.value, _JC.value, _QC.value,
+            _KC.value, _AC.value, _2D.value, _3D.value, _4D.value);
+    cv[1] = _mm_setr_epi8(_5D.value, _6D.value, _7D.value, _8D.value, _9D.value,
+            _TD.value, _JD.value, _QD.value, _KD.value, _AD.value, _2H.value,
+            _3H.value, _4H.value, _5H.value, _6H.value, _7H.value);
+    cv[2] = _mm_setr_epi8(_8H.value, _9H.value, _TH.value, _JH.value, _QH.value,
+            _KH.value, _AH.value, _2S.value, _3S.value, _4S.value, _5S.value,
+            _6S.value, _7S.value, _8S.value, _9S.value, _TS.value);
+    cv[3] = _mm_setr_epi8(_JS.value, _QS.value, _KS.value, _AS.value, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
 
 } /* namespace poker */
