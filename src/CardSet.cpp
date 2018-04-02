@@ -181,7 +181,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     if (unlikely(flush != 0)) {
         uint32_t zeros = trailing_zeros(flush);
         uint32_t color = (zeros - 48) / 4;
-        uint16_t flush_cards = _mm_extract_epi64(cv, 1) >> (color * 16);
+        uint16_t flush_cards = upper_half(cv) >> (color * 16);
 
         uint32_t flush_cards_dup = flush_cards | (flush_cards >> 13);
         uint32_t straight_flush = flush_cards & (flush_cards_dup << 1);

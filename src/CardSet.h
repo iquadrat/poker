@@ -194,12 +194,8 @@ public:
     }
 
     bool contains(Card c) const {
-        uint64_t card_bits = _mm_extract_epi64(cv, 1);
+        uint64_t card_bits = upper_half(cv);
         return (card_bits & (static_cast<uint64_t>(2) << c.getValue())) != 0;
-        // TODO extract card_bits and test for card bit
-        //__m128i v = toCardVec(c);
-        //__m128i mask = _mm_and_si128(v, cardMask());
-        //return !all_zeros(v, mask);
     }
 
     void add(Card c) {
@@ -247,6 +243,14 @@ private:
     private:
         __m128i cv[64];
     };
+
+    static uint64_t upper_half(__m128i v) {
+    #ifdef __SSE_4_1__
+        return _mm_extract_epi64(v, 1);
+    #else
+        return _mm_cvtsi128_si64x(_mm_unpackhi_epi64(v, v));
+    #endif
+    }
 
     static bool all_zeros(__m128i v) {
 #ifdef __SSE4_1__
