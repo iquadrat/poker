@@ -174,10 +174,10 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 #endif
     uint64_t sum_bits = _mm_cvtsi128_si64(cv);
-    uint64_t sum_bits_shift1 = sum_bits >> 1;
-    uint64_t sum_bits_shift2 = sum_bits >> 2;
+    uint64_t sum_bits_shift1 = sum_bits << 1;
+    uint64_t sum_bits_shift2 = sum_bits << 2;
 
-    uint64_t flush = sum_bits_shift2 & (sum_bits_shift1 | sum_bits) & 0x1111000000000000;
+    uint64_t flush = sum_bits & (sum_bits_shift1 | sum_bits_shift2) & 0x4444000000000000;
     if (unlikely(flush != 0)) {
         uint32_t zeros = trailing_zeros(flush);
         uint32_t color = (zeros - 48) / 4;
@@ -191,7 +191,7 @@ HandRanking CardSet::rankTexasHoldem() const {
             return HandRanking::with60bitHeight(HandRanking::STRAIGHT_FLUSH, highest_bit_ranking(straight_flush));
         }
 
-        uint32_t flush_card_count = (sum_bits >> zeros) & 0xf;
+        uint32_t flush_card_count = (sum_bits >> (zeros - 2)) & 0xf;
         if (flush_card_count > 5) {
             flush_cards = erase_lowest_bit(flush_cards);
         }
@@ -201,12 +201,12 @@ HandRanking CardSet::rankTexasHoldem() const {
         return HandRanking::with60bitHeight(HandRanking::FLUSH, flush_cards);
     }
 
-    uint64_t one_of_a_kind = sum_bits & 011111111111111;
-    uint64_t two_of_a_kind = sum_bits_shift1 & 011111111111111;
+    uint64_t one_of_a_kind = sum_bits_shift2 & 044444444444444;
+    uint64_t two_of_a_kind = sum_bits_shift1 & 044444444444444;
     uint64_t colorless = one_of_a_kind | two_of_a_kind;
-    uint64_t four_of_a_kind = sum_bits_shift2 & 011111111111111;
 
     // Check for four of a kind:
+    uint64_t four_of_a_kind = sum_bits & 044444444444444;
     if (unlikely(four_of_a_kind != 0)) {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
@@ -219,7 +219,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     uint64_t straight = colorless & (straight_bits << 3);
     straight = straight & (straight << 6);
     straight = straight & (straight_bits << 12);
-    if (straight != 0) {
+    if (unlikely(straight != 0)) {
         return HandRanking::with60bitHeight(HandRanking::STRAIGHT, highest_bit_ranking(straight));
     }
 
