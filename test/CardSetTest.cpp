@@ -179,7 +179,7 @@ TEST(CardSet, rankTH_ThreeOfAKind) {
     HandRanking rank2 = CardSet({_9C, _9H, _9D, _8H, _4H, _6C, _JC}).rankTexasHoldem();
     HandRanking rank3 = CardSet({_9C, _9H, _9D, _8H, _4H, _6C, _KH}).rankTexasHoldem();
     HandRanking rank4 = CardSet({_9C, _9H, _9D, _JC, _4H, _6C, _KH}).rankTexasHoldem();
-    HandRanking rank5 = CardSet({_9C, _9H, _9D, _JC, _4H, _7D, _KH}).rankTexasHoldem();
+    HandRanking rank5 = CardSet({_9C, _9H, _9D, _JC, _4H, _TD, _KH}).rankTexasHoldem();
     HandRanking rank6 = CardSet({_AC, _AH, _AD, _JC, _4H, _7D, _KH}).rankTexasHoldem();
     HandRanking rank7 = CardSet({_AC, _AH, _AD, _QC, _4H, _7D, _KH}).rankTexasHoldem();
     HandRanking rank8 = CardSet({_AC, _AH, _AD, _QC, _4H, _9D, _KH}).rankTexasHoldem();
@@ -192,6 +192,7 @@ TEST(CardSet, rankTH_ThreeOfAKind) {
     ASSERT_EQ(HandRanking::THREE_OF_A_KIND, rank5.getRanking());
     ASSERT_EQ(HandRanking::THREE_OF_A_KIND, rank6.getRanking());
     ASSERT_EQ(HandRanking::THREE_OF_A_KIND, rank7.getRanking());
+    ASSERT_EQ(HandRanking::THREE_OF_A_KIND, rank8.getRanking());
 
     ASSERT_GT(rank1, rank0);
     ASSERT_GT(rank2, rank1);
@@ -201,6 +202,7 @@ TEST(CardSet, rankTH_ThreeOfAKind) {
     ASSERT_GT(rank6, rank5);
     ASSERT_GT(rank7, rank6);
     ASSERT_EQ(rank8, rank7);
+    ASSERT_EQ(rank8, rank8);
 }
 
 TEST(CardSet, rankTH_TwoPairs) {
@@ -358,28 +360,33 @@ TEST(CardSet, rankTH_Flush) {
 }
 
 TEST(CardSet, rankTH_StraightFlush) {
-    HandRanking rank0 = CardSet({_4H, _4S, _4D, _4C, _8H, _JC, _AC}).rankTexasHoldem();
+    HandRanking rank0a = CardSet({_4H, _4S, _4D, _4C, _8H, _JC, _AC}).rankTexasHoldem();
+    HandRanking rank0b = CardSet({_2H, _3H, _4H, _5H, _QS, _KH, _AS}).rankTexasHoldem();
     HandRanking rank1 = CardSet({_4H, _4S, _4D, _5D, _6D, _7D, _8D}).rankTexasHoldem();
     HandRanking rank2 = CardSet({_4H, _4D, _5D, _6D, _7D, _8D, _9D}).rankTexasHoldem();
     HandRanking rank3 = CardSet({_3D, _4D, _5D, _6D, _7D, _8D, _9D}).rankTexasHoldem();
     HandRanking rank4 = CardSet({_AC, _AD, _5D, _6D, _7D, _8D, _9D}).rankTexasHoldem();
     HandRanking rank5 = CardSet({_KD, _AD, _5D, _6D, _7D, _8D, _9D}).rankTexasHoldem();
     HandRanking rank6 = CardSet({_TS, _AD, _5D, _6D, _7D, _8D, _9D}).rankTexasHoldem();
+    HandRanking rank7 = CardSet({_2D, _3D, _4D, _5D, _QS, _KD, _AD}).rankTexasHoldem();
 
-    ASSERT_NE(HandRanking::STRAIGHT_FLUSH, rank0.getRanking());
+    ASSERT_NE(HandRanking::STRAIGHT_FLUSH, rank0a.getRanking());
+    ASSERT_NE(HandRanking::STRAIGHT_FLUSH, rank0b.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank1.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank2.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank3.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank4.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank5.getRanking());
     ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank6.getRanking());
+    ASSERT_EQ(HandRanking::STRAIGHT_FLUSH, rank7.getRanking());
 
-    ASSERT_GT(rank1, rank0);
+    ASSERT_GT(rank1, rank0a);
     ASSERT_GT(rank2, rank1);
     ASSERT_EQ(rank3, rank2);
     ASSERT_EQ(rank4, rank2);
     ASSERT_EQ(rank5, rank2);
     ASSERT_EQ(rank6, rank2);
+    ASSERT_GT(rank2, rank7);
 }
 
 

@@ -113,11 +113,14 @@ public:
     };
 
     bool operator<(const HandRanking& other) const {
-        return value < other.value;
+        if (value_hi == other.value_hi) {
+            return value_lo < other.value_lo;
+        }
+        return value_hi < other.value_hi;
     }
 
     bool operator==(const HandRanking& other) const {
-        return value == other.value;
+        return (value_hi == other.value_hi) && (value_lo == other.value_lo);
     }
 
     friend bool operator<=(const HandRanking & a, const HandRanking & b) {
@@ -134,7 +137,7 @@ public:
     }
 
     Ranking getRanking() const {
-        return static_cast<Ranking>(value >> RANKING_SHIFT);
+        return static_cast<Ranking>(value_hi >> RANKING_SHIFT);
     }
 
 private:
@@ -144,40 +147,17 @@ private:
 
     HandRanking() = default;
 
-    HandRanking(uint64_t value): value(value) {}
+    HandRanking(uint64_t value_hi): HandRanking(value_hi, 0) {}
 
-    static bool has_upper_bit_set(uint64_t v, uint32_t lower_bit_count) {
-        return (v >> lower_bit_count) != 0;
-    }
+    HandRanking(uint64_t value_hi, uint64_t value_lo): value_hi(value_hi), value_lo(value_lo) {}
 
-    // TODO move to cpp
-    static HandRanking with18bitHeight(Ranking ranking, uint32_t height, uint64_t side_cards) {
-#if CARD_CHECKS
-        if (has_upper_bit_set(height, 18)) {
-            throw new std::runtime_error("Invalid height");
-        }
-        if (has_upper_bit_set(side_cards, 42)) {
-            throw new std::runtime_error("Invalid side_cards");
-        }
-#endif
-        return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT)
-                | (static_cast<uint64_t>(height) << 42) | side_cards);
-    }
+    static HandRanking create(Ranking ranking, uint64_t height, uint64_t side_cards);
+    static HandRanking with18bitHeight(Ranking ranking, uint32_t height, uint64_t side_cards);
+    static HandRanking with42bitHeight(Ranking ranking, uint64_t height, uint32_t side_cards);
+    static HandRanking with60bitHeight(Ranking ranking, uint64_t height);
 
-    static HandRanking with42bitHeight(Ranking ranking, uint64_t height, uint32_t side_cards) {
-#if CARD_CHECKS
-        if (has_upper_bit_set(height, 42)) {
-            throw new std::runtime_error("Invalid height");
-        }
-        if (has_upper_bit_set(side_cards, 18)) {
-            throw new std::runtime_error("Invalid side_cards");
-        }
-#endif
-        return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT)
-                | (static_cast<uint64_t>(height) << 18) | side_cards);
-    }
-
-    uint64_t value;
+    uint64_t value_hi;
+    uint64_t value_lo;
 };
 
 class CardSet {
@@ -294,14 +274,12 @@ private:
     }
 
     static __m128i internalToCardVec(Card c) {
+        constexpr uint64_t one = 1;
         uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
         uint32_t color = static_cast<uint32_t>(c.getColor());
-        constexpr uint64_t one = 1;
-        uint64_t rank_bits = one << rank;
-        rank_bits |= rank_bits >> 13;
-        uint64_t card_bits = rank_bits << (16 * color);
+
+        uint64_t card_bits = one << (16 * color + rank);
         uint64_t sum_bits = (one << (3 * rank));
-        sum_bits |= sum_bits >> 39;
         sum_bits |= (one << (48 + 4 * color));
         return _mm_set_epi64x(card_bits, sum_bits);
     }
