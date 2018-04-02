@@ -106,47 +106,19 @@ uint64_t erase_lowest_two_bits(uint64_t v) {
     return v;
 }
 
-//uint32_t highest_bit_ranking(uint32_t v) {
-//    uint8_t clz = __builtin_clz(v);
-//    return -clz;
-//}
-
 uint32_t highest_bit_ranking(uint64_t v) {
-    uint8_t clz = -__builtin_clzll(v);
-    return clz;
+    return -__builtin_clzll(v);
 }
 
 uint32_t trailing_zeros(uint64_t v) {
     return __builtin_ctzll(v);
 }
 
-uint32_t bit_ranking(uint64_t v) {
-    return trailing_zeros(v);
-}
-
-//template<typename F>
-//inline __m128i combine4(__m128i v, F f) {
-//    __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
-//    return f(r, _mm_shuffle_epi32(r, _MM_SHUFFLE(1,0,3,2)));
-//}
-//
-//inline __m128i and4(__m128i v) {
-//    return combine4(v, [](__m128i a, __m128i b) {return _mm_and_si128(a,b);});
-//}
-//
-//inline __m128i vand(__m128i a, __m128i b) {
-//    return _mm_and_si128(a, b);
-//}
-//inline __m128i vor(__m128i a, __m128i b) {
-//    return _mm_or_si128(a, b);
-//}
-//inline __m128i vadd(__m128i a, __m128i b) {
-//    return _mm_add_epi32(a, b);
-//}
-
+#if CARD_CHECKS
 bool has_upper_bit_set(uint64_t v, uint32_t lower_bit_count) {
     return (v >> lower_bit_count) != 0;
 }
+#endif
 
 } // namespace
 
@@ -202,32 +174,24 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 #endif
     uint64_t sum_bits = _mm_cvtsi128_si64(cv);
+    uint64_t sum_bits_shift1 = sum_bits >> 1;
+    uint64_t sum_bits_shift2 = sum_bits >> 2;
 
-    /*uint64_t sum_bit4 = (sum_bits & 0x4444000000000000) >> 2;
-    uint64_t sum_bit2 = (sum_bits & 0x2222000000000000) >> 1;
-    uint64_t sum_bit1 = sum_bits & 0x1111000000000000;
-    uint64_t flush = sum_bit4 & (sum_bit2 | sum_bit1);*/
-    __m128i flush0 = _mm_cmpgt_epi8(_mm_and_si128(cv, _mm_set1_epi8(0xf)), _mm_set1_epi8(4));
-    __m128i flush1 = _mm_cmpgt_epi8(cv, _mm_set1_epi8(0x4f));
-    __m128i flush = _mm_or_si128(flush0, flush1);
-    if (unlikely(!all_zeros(flush, _mm_set_epi16(0,0,0,0,0xffff,0,0,0)))) {
-        flush0 = _mm_shuffle_epi8(flush0, _mm_set_epi8(-1,-1, 7, 7,-1,-1, 6, 6,
-                                                       -1,-1,-1,-1,-1,-1,-1,-1));
-        flush1 = _mm_shuffle_epi8(flush1, _mm_set_epi8( 7, 7,-1,-1, 6, 6,-1,-1,
-                                                       -1,-1,-1,-1,-1,-1,-1,-1));
-        flush = _mm_or_si128(flush0, flush1);
-        uint64_t flush_cards = _mm_extract_epi64(_mm_and_si128(cv, flush), 1);
+    uint64_t flush = sum_bits_shift2 & (sum_bits_shift1 | sum_bits) & 0x1111000000000000;
+    if (unlikely(flush != 0)) {
+        uint32_t zeros = trailing_zeros(flush);
+        uint32_t color = (zeros - 48) / 4;
+        uint16_t flush_cards = _mm_extract_epi64(cv, 1) >> (color * 16);
 
-        // Note: This relies on no two player having straight flush of different colors at the same time. This is not possible in TH due to the 5 shared card.
-        uint64_t flush_cards_dup = flush_cards | (flush_cards >> 13);
-        uint64_t straight_flush = flush_cards & (flush_cards_dup << 1);
+        uint32_t flush_cards_dup = flush_cards | (flush_cards >> 13);
+        uint32_t straight_flush = flush_cards & (flush_cards_dup << 1);
         straight_flush &= (straight_flush << 2);
         straight_flush &= (flush_cards_dup << 4);
-
-        uint32_t flush_card_count = _mm_popcnt_u64(flush_cards);
         if (unlikely(straight_flush != 0)) {
             return HandRanking::with60bitHeight(HandRanking::STRAIGHT_FLUSH, highest_bit_ranking(straight_flush));
         }
+
+        uint32_t flush_card_count = (sum_bits >> zeros) & 0xf;
         if (flush_card_count > 5) {
             flush_cards = erase_lowest_bit(flush_cards);
         }
@@ -238,17 +202,16 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
     uint64_t one_of_a_kind = sum_bits & 011111111111111;
-    uint64_t two_of_a_kind = (sum_bits & 022222222222222) >> 1;
+    uint64_t two_of_a_kind = sum_bits_shift1 & 011111111111111;
     uint64_t colorless = one_of_a_kind | two_of_a_kind;
-    uint64_t four_of_a_kind = sum_bits & 044444444444444;
+    uint64_t four_of_a_kind = sum_bits_shift2 & 011111111111111;
 
     // Check for four of a kind:
     if (unlikely(four_of_a_kind != 0)) {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
-        return HandRanking::with42bitHeight(HandRanking::FOUR_OF_A_KIND, four_of_a_kind,
-                highest_bit_ranking(colorless));
+        return HandRanking::create(HandRanking::FOUR_OF_A_KIND, four_of_a_kind, highest_bit_ranking(colorless));
     }
 
     // Straight:
@@ -257,8 +220,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     straight = straight & (straight << 6);
     straight = straight & (straight_bits << 12);
     if (straight != 0) {
-        return HandRanking::with18bitHeight(HandRanking::STRAIGHT, 0,
-                highest_bit_ranking(straight));
+        return HandRanking::with60bitHeight(HandRanking::STRAIGHT, highest_bit_ranking(straight));
     }
 
     // Three of a kind:
@@ -273,12 +235,10 @@ HandRanking CardSet::rankTexasHoldem() const {
         if (two_of_a_kind != 0) {
             // Full house!
             // There could still be multiple two-of-a-kind. Keep highest only.
-            return HandRanking::with42bitHeight(HandRanking::FULL_HOUSE, three_of_a_kind,
-                    highest_bit_ranking(two_of_a_kind));
+            return HandRanking::create(HandRanking::FULL_HOUSE, three_of_a_kind, highest_bit_ranking(two_of_a_kind));
         }
         uint64_t side_cards = erase_lowest_two_bits(colorless ^ three_of_a_kind);
-        return HandRanking::with18bitHeight(HandRanking::THREE_OF_A_KIND, highest_bit_ranking(three_of_a_kind),
-                side_cards);
+        return HandRanking::create(HandRanking::THREE_OF_A_KIND, three_of_a_kind, side_cards);
     }
 
 
