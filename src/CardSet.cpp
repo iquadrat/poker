@@ -108,30 +108,6 @@ uint32_t highest_bit_ranking(uint32_t v) {
     return -__builtin_clz(v);
 }
 
-uint32_t trailing_zeros(uint32_t v) {
-    return __builtin_ctz(v);
-}
-
-template<typename F>
-inline __m128i combine4(__m128i v, F f) {
-    __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
-    return f(r, _mm_shuffle_epi32(r, _MM_SHUFFLE(1,0,3,2)));
-}
-
-inline __m128i and4(__m128i v) {
-    return combine4(v, [](__m128i a, __m128i b) {return _mm_and_si128(a,b);});
-}
-
-inline __m128i vand(__m128i a, __m128i b) {
-    return _mm_and_si128(a, b);
-}
-inline __m128i vor(__m128i a, __m128i b) {
-    return _mm_or_si128(a, b);
-}
-inline __m128i vadd(__m128i a, __m128i b) {
-    return _mm_add_epi32(a, b);
-}
-
 uint32_t get_straight(uint32_t cards) {
     // Copy ace bit to lowest position.
     uint32_t dup = cards | (cards >> 26);
@@ -242,31 +218,15 @@ HandRanking CardSet::rankTexasHoldem() const {
             side_cards);
 }
 
-CardSet::Table::Table() {
-    for (uint8_t c = 0; c < 4; ++c) {
-        for (uint8_t r = 0; r < 13; ++r) {
-            Card card(static_cast<Rank>(r), static_cast<Color>(c));
-            cv[card.getValue()] = internalToCardVec(card);
-        }
-    }
-}
-
-CardSet::Table CardSet::card_table;
-
 FastDeck::FastDeck() {
     sfmt_init_gen_rand(&sfmt, 12345);
-    __m128i* cv= reinterpret_cast<__m128i*>(cards);
-    cv[0] = _mm_setr_epi8(_2C.value, _3C.value, _4C.value, _5C.value, _6C.value,
-            _7C.value, _8C.value, _9C.value, _TC.value, _JC.value, _QC.value,
-            _KC.value, _AC.value, _2D.value, _3D.value, _4D.value);
-    cv[1] = _mm_setr_epi8(_5D.value, _6D.value, _7D.value, _8D.value, _9D.value,
-            _TD.value, _JD.value, _QD.value, _KD.value, _AD.value, _2H.value,
-            _3H.value, _4H.value, _5H.value, _6H.value, _7H.value);
-    cv[2] = _mm_setr_epi8(_8H.value, _9H.value, _TH.value, _JH.value, _QH.value,
-            _KH.value, _AH.value, _2S.value, _3S.value, _4S.value, _5S.value,
-            _6S.value, _7S.value, _8S.value, _9S.value, _TS.value);
-    cv[3] = _mm_setr_epi8(_JS.value, _QS.value, _KS.value, _AS.value, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0);
+    int i = 0;
+    for (uint8_t c = 0; c < 4; ++c) {
+        for (uint8_t r = 0; r < 13; ++r) {
+            cards[i] = Card(static_cast<Rank>(r), static_cast<Color>(c));
+            i++;
+        }
+    }
 }
 
 } /* namespace poker */

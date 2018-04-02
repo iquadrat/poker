@@ -89,13 +89,9 @@ TEST(FastDeck, deal) {
 
     deck.shuffle();
 
-    uint64_t dealt = 0;
     for(int i=0; i<52; ++i) {
         Card c = deck.deal();
         cs.add(c);
-        uint64_t mask = static_cast<uint64_t>(1) << c.getValue();
-        ASSERT_EQ(0, dealt & mask) << "Iteration " << i;
-        dealt |= mask;
     }
     ASSERT_EQ(52, cs.size());
 }

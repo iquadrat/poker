@@ -16,6 +16,30 @@
 
 namespace poker {
 
+inline uint32_t trailing_zeros(uint32_t v) {
+    return __builtin_ctz(v);
+}
+
+template<typename F>
+inline __m128i combine4(__m128i v, F f) {
+    __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
+    return f(r, _mm_shuffle_epi32(r, _MM_SHUFFLE(1,0,3,2)));
+}
+
+inline __m128i and4(__m128i v) {
+    return combine4(v, [](__m128i a, __m128i b) {return _mm_and_si128(a,b);});
+}
+
+inline __m128i vand(__m128i a, __m128i b) {
+    return _mm_and_si128(a, b);
+}
+inline __m128i vor(__m128i a, __m128i b) {
+    return _mm_or_si128(a, b);
+}
+inline __m128i vadd(__m128i a, __m128i b) {
+    return _mm_add_epi32(a, b);
+}
+
 enum class Color {
     CLUBS = 0, DIAMONDS = 1, HEARTS = 2, SPADES = 3,
 };
@@ -40,39 +64,45 @@ enum class Rank {
 
 std::string toString(Rank rank);
 
+union CardVec {
+    constexpr CardVec() {}
+    uint32_t cards[4] = {0,0,0,0};
+    __m128i v;
+};
+
+constexpr CardVec internalToVec(Rank rank, Color color) {
+    CardVec cv;
+    uint32_t shift = 26 - static_cast<uint32_t>(rank) * 2;
+    cv.cards[static_cast<uint32_t>(color)] = (1 << 28) | ((1 << 28) >> shift);
+    return cv;
+}
+
 class Card {
-    constexpr static uint8_t COLOR_MULT = 16;
 public:
     constexpr static uint8_t COUNT = 13 * 4;
 
     constexpr Card(Rank rank, Color color) :
-            value(static_cast<int>(rank) + COLOR_MULT * static_cast<int>(color)) {
-    }
+            value(internalToVec(rank, color)) {}
 
-    /*    explicit Card(uint8_t value) :
-     value(value) {
-     #ifdef CARD_CHECKS
-     if (value >= COUNT)
-     throw new std::string("Invalid card value " + value);
-     #endif
-     }*/
-
+    Card() {}
     Card(const Card&) = default;
-    Card& operator=(const Card&) = default;
-    bool operator==(const Card& o) const {
-        return o.value == value;
-    }
+    Card(Card&&) = default;
 
-    uint8_t getValue() const {
-        return value;
+    Card& operator=(const Card& c) = default;
+
+    bool operator==(const Card& o) const {
+        __m128i x = _mm_xor_si128(value.v, o.value.v);
+        return _mm_test_all_zeros(x,x);
     }
 
     Color getColor() const {
-        return static_cast<Color>(value / COLOR_MULT);
+        int mask = _mm_movemask_epi8(_mm_cmpgt_epi32(value.v, _mm_setzero_si128()));
+        return static_cast<Color>(trailing_zeros(mask) / 4);
     }
 
     Rank getRank() const {
-        return static_cast<Rank>(value % COLOR_MULT);
+        int bits = _mm_cvtsi128_si32(combine4(value.v, vor));
+        return static_cast<Rank>(trailing_zeros(bits) / 2 - 1);
     }
 
     std::tuple<Rank, Color> getRankColor() const {
@@ -87,17 +117,13 @@ public:
     }
 
 private:
-    explicit Card(uint8_t value) :
-            value(value) {
-#ifdef CARD_CHECKS
-        if (value >= COUNT)
-        throw new std::string("Invalid card value " + value);
-#endif
+
+    explicit Card(CardVec value) : value(value) {
     }
 
     friend class FastDeck;
-
-    const uint8_t value;
+    friend class CardSet;
+    CardVec value;
 };
 
 inline void PrintTo(const Card &c, ::std::ostream* os) {
@@ -235,21 +261,6 @@ public:
     std::vector<Card> toCardVector() const;
 
 private:
-    union CardVec {
-        uint32_t cards[4] = { 0, 0, 0, 0 };
-        __m128i v;
-    };
-
-    class Table {
-    public:
-        Table();
-        CardVec operator[](uint8_t idx) {
-            return cv[idx];
-        }
-    private:
-        CardVec cv[64];
-    };
-
     static bool all_zeros(__m128i v) {
 #ifdef __SSE4_1__
         return _mm_testz_si128(v, v);
@@ -265,14 +276,8 @@ private:
         return all_zeros(_mm_and_si128(v, mask));
     }
 
-    static Table card_table;
-
     static CardVec toCardVec(Card c) {
-#ifdef NO_CARD_TABLE
-        return internalToCardVec(c);
-#else
-        return card_table[c.getValue()];
-#endif
+        return c.value;
     }
 
     static CardVec internalToCardVec(Card c) {
@@ -312,14 +317,14 @@ public:
         // Note: This has a slight bias towards lower indices.
         uint32_t random = sfmt_genrand_uint32(&sfmt);
         uint32_t index = (static_cast<uint64_t>(random) * remaining) >> 32;
-        uint32_t card = cards[index];
+        Card card = cards[index];
         remaining--;
         std::swap(cards[remaining], cards[index]);
-        return Card(card);
+        return card;
     }
 
 private:
-    uint8_t cards[64];
+    Card cards[52];
     int32_t remaining = 0;
     sfmt_t sfmt;
 };
