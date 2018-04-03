@@ -163,7 +163,7 @@ private:
 class CardSet {
 public:
     static CardSet fullDeck() {
-        return _mm_set_epi64x(0x1fff1fff1fff1fff, 0xdddd024924924924);
+        return _mm_set_epi64x(0x0d0d0d0d3fffffff, 0xfffffe4924924924);
     }
 
     CardSet() {
@@ -186,16 +186,19 @@ public:
     }
 
     uint32_t size() const {
-        uint64_t sum_bits = _mm_cvtsi128_si64x(cv);
-        return ((sum_bits >> 48) & 0xf) +
-               ((sum_bits >> 52) & 0xf) +
-               ((sum_bits >> 56) & 0xf) +
-               ((sum_bits >> 60) & 0xf);
+        uint64_t sum_bits = color_cnts();
+        return ((sum_bits) & 0xff) +
+               ((sum_bits >> 8) & 0xff) +
+               ((sum_bits >> 16) & 0xff) +
+               ((sum_bits >> 24) & 0xff);
     }
 
     bool contains(Card c) const {
-        uint64_t card_bits = upper_half(cv);
-        return (card_bits & (static_cast<uint64_t>(2) << c.getValue())) != 0;
+        uint32_t rank = static_cast<uint32_t>(c.getRank());
+        uint32_t color = static_cast<uint32_t>(c.getColor());
+        uint64_t card_bits = _mm_cvtsi128_si64x(_mm_srli_si128(cv, 5));
+        uint64_t bit = 13 * color + rank + 2;
+        return (card_bits & (static_cast<uint64_t>(1) << bit)) != 0;
     }
 
     void add(Card c) {
@@ -244,12 +247,12 @@ private:
         __m128i cv[64];
     };
 
-    static uint64_t upper_half(__m128i v) {
-    #ifdef __SSE_4_1__
-        return _mm_extract_epi64(v, 1);
-    #else
-        return _mm_cvtsi128_si64x(_mm_unpackhi_epi64(v, v));
-    #endif
+    uint32_t color_cnts() const {
+#ifdef __SSE4_1__
+        return _mm_extract_epi32(cv, 3);
+#else
+        return _mm_cvtsi128_si64x(_mm_shuffle_epi32(cv, -1));
+#endif
     }
 
     static bool all_zeros(__m128i v) {
@@ -279,17 +282,18 @@ private:
 
     static __m128i internalToCardVec(Card c) {
         constexpr uint64_t one = 1;
-        uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
+        uint32_t rank = static_cast<uint32_t>(c.getRank());
         uint32_t color = static_cast<uint32_t>(c.getColor());
-
-        uint64_t card_bits = one << (16 * color + rank);
-        uint64_t sum_bits = (one << (3 * rank));
-        sum_bits |= (one << (48 + 4 * color));
-        return _mm_set_epi64x(card_bits, sum_bits);
+        __m128i card_bits = _mm_set_epi64x(0, one << (13 * color + rank + 2));
+        __m128i card_cnts = _mm_set_epi64x(0, one << (3 * (rank + 1)));
+        __m128i color_cnts = _mm_set_epi64x(0, one << (8 * color));
+        return _mm_or_si128(card_cnts,
+                  _mm_or_si128(_mm_slli_si128(card_bits, 5),
+                               _mm_slli_si128(color_cnts, 12)));
     }
 
     static __m128i cardMask() {
-        return _mm_set_epi64x(0xffffffffffffffff, 0);
+        return _mm_set_epi64x(0x000000003fffffff, 0xfffffc0000000000);
     }
 
     CardSet(__m128i cv) :

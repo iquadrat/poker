@@ -94,7 +94,6 @@ uint64_t lowest_bit(uint64_t v) {
     return v & (-v);
 }
 
-
 template<typename T>
 T erase_lowest_bit(T v) {
     return v & (v - 1);
@@ -110,8 +109,32 @@ uint32_t highest_bit_ranking(uint64_t v) {
     return -__builtin_clzll(v);
 }
 
-uint32_t trailing_zeros(uint64_t v) {
-    return __builtin_ctzll(v);
+/*uint32_t trailing_zeros64(uint64_t v) {
+ return __builtin_ctzll(v);
+ }*/
+
+uint32_t trailing_zeros32(uint32_t v) {
+    return __builtin_ctz(v);
+}
+
+template<typename F>
+inline __m128i combine4(__m128i v, F f) {
+    __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
+    return f(r, _mm_shuffle_epi32(r, _MM_SHUFFLE(1,0,3,2)));
+}
+
+inline __m128i and4(__m128i v) {
+    return combine4(v, [](__m128i a, __m128i b) {return _mm_and_si128(a,b);});
+}
+
+inline __m128i vand(__m128i a, __m128i b) {
+    return _mm_and_si128(a, b);
+}
+inline __m128i vor(__m128i a, __m128i b) {
+    return _mm_or_si128(a, b);
+}
+inline __m128i vadd(__m128i a, __m128i b) {
+    return _mm_add_epi32(a, b);
 }
 
 #if CARD_CHECKS
@@ -120,78 +143,80 @@ bool has_upper_bit_set(uint64_t v, uint32_t lower_bit_count) {
 }
 #endif
 
-} // namespace
+}
+ // namespace
 
-HandRanking HandRanking::create(Ranking ranking, uint64_t height, uint64_t side_cards) {
+HandRanking HandRanking::create(Ranking ranking, uint64_t height,
+    uint64_t side_cards) {
 #if CARD_CHECKS
-    if (has_upper_bit_set(height, 42)) {
-        throw new std::runtime_error("Invalid height");
-    }
+if (has_upper_bit_set(height, 42)) {
+    throw new std::runtime_error("Invalid height");
+}
 #endif
-    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | height, side_cards);
+return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | height,
+        side_cards);
 }
 
-HandRanking HandRanking::with18bitHeight(Ranking ranking, uint32_t height, uint64_t side_cards) {
+HandRanking HandRanking::with18bitHeight(Ranking ranking, uint32_t height,
+    uint64_t side_cards) {
 #if CARD_CHECKS
-    if (has_upper_bit_set(height, 18)) {
-        throw new std::runtime_error("Invalid height");
-    }
-    if (has_upper_bit_set(side_cards, 42)) {
-        throw new std::runtime_error("Invalid side_cards");
-    }
+if (has_upper_bit_set(height, 18)) {
+    throw new std::runtime_error("Invalid height");
+}
+if (has_upper_bit_set(side_cards, 42)) {
+    throw new std::runtime_error("Invalid side_cards");
+}
 #endif
-    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT)
-            | (static_cast<uint64_t>(height) << 42) | side_cards);
+return HandRanking(
+        (static_cast<uint64_t>(ranking) << RANKING_SHIFT)
+                | (static_cast<uint64_t>(height) << 42) | side_cards);
 }
 
-HandRanking HandRanking::with42bitHeight(Ranking ranking, uint64_t height, uint32_t side_cards) {
+HandRanking HandRanking::with42bitHeight(Ranking ranking, uint64_t height,
+    uint32_t side_cards) {
 #if CARD_CHECKS
-    if (has_upper_bit_set(height, 42)) {
-        throw new std::runtime_error("Invalid height");
-    }
-    if (has_upper_bit_set(side_cards, 18)) {
-        throw new std::runtime_error("Invalid side_cards");
-    }
+if (has_upper_bit_set(height, 42)) {
+    throw new std::runtime_error("Invalid height");
+}
+if (has_upper_bit_set(side_cards, 18)) {
+    throw new std::runtime_error("Invalid side_cards");
+}
 #endif
-    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT)
-            | (static_cast<uint64_t>(height) << 18) | side_cards);
+return HandRanking(
+        (static_cast<uint64_t>(ranking) << RANKING_SHIFT)
+                | (static_cast<uint64_t>(height) << 18) | side_cards);
 }
 
 HandRanking HandRanking::with60bitHeight(Ranking ranking, uint64_t height) {
 #if CARD_CHECKS
-    if (has_upper_bit_set(height, 60)) {
-        throw new std::runtime_error("Invalid height");
-    }
-#endif
-    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | height);
+if (has_upper_bit_set(height, 60)) {
+    throw new std::runtime_error("Invalid height");
 }
-
+#endif
+return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | height);
+}
 
 HandRanking CardSet::rankTexasHoldem() const {
 #ifdef CARD_CHECKS
-    if (size() != 7) {
-        throw new std::runtime_error("Invalid CardSet size: " + size());
-    }
+  if (size() != 7) {
+      throw new std::runtime_error("Invalid CardSet size: " + size());
+  }
 #endif
-    uint64_t sum_bits = _mm_cvtsi128_si64(cv);
-    uint64_t sum_bits_shift1 = sum_bits << 1;
-    uint64_t sum_bits_shift2 = sum_bits << 2;
-
-    uint64_t flush = sum_bits & (sum_bits_shift1 | sum_bits_shift2) & 0x4444000000000000;
-    if (unlikely(flush != 0)) {
-        uint32_t zeros = trailing_zeros(flush);
-        uint32_t color = (zeros - 48) / 4;
-        uint16_t flush_cards = upper_half(cv) >> (color * 16);
-
+    __m128i flush = _mm_cmpgt_epi8(cv, _mm_set1_epi8(4));
+    if (unlikely(!all_zeros(flush, _mm_set_epi32(-1, 0, 0, 0)))) {
+        uint32_t color = trailing_zeros32(_mm_movemask_epi8(flush) >> 12);
+        uint32_t flush_cards = (_mm_cvtsi128_si64x(_mm_srli_si128(cv, 5)) >> (color * 13)) & 0x7ffc;
         uint32_t flush_cards_dup = flush_cards | (flush_cards >> 13);
+
         uint32_t straight_flush = flush_cards & (flush_cards_dup << 1);
         straight_flush &= (straight_flush << 2);
         straight_flush &= (flush_cards_dup << 4);
         if (unlikely(straight_flush != 0)) {
-            return HandRanking::with60bitHeight(HandRanking::STRAIGHT_FLUSH, highest_bit_ranking(straight_flush));
+            return HandRanking::with60bitHeight(HandRanking::STRAIGHT_FLUSH,
+                    highest_bit_ranking(straight_flush));
         }
-
-        uint32_t flush_card_count = (sum_bits >> (zeros - 2)) & 0xf;
+        uint32_t flush_card_count = (color_cnts() >> (8 * color)) & 0xff;
+        //uint32_t flush_card_count = _mm_popcnt_u32(flush_cards);
         if (flush_card_count > 5) {
             flush_cards = erase_lowest_bit(flush_cards);
         }
@@ -201,8 +226,9 @@ HandRanking CardSet::rankTexasHoldem() const {
         return HandRanking::with60bitHeight(HandRanking::FLUSH, flush_cards);
     }
 
-    uint64_t one_of_a_kind = sum_bits_shift2 & 044444444444444;
-    uint64_t two_of_a_kind = sum_bits_shift1 & 044444444444444;
+    uint64_t sum_bits = _mm_cvtsi128_si64(cv);
+    uint64_t one_of_a_kind = (sum_bits << 2) & 044444444444444;
+    uint64_t two_of_a_kind = (sum_bits << 1) & 044444444444444;
     uint64_t colorless = one_of_a_kind | two_of_a_kind;
 
     // Check for four of a kind:
@@ -211,7 +237,8 @@ HandRanking CardSet::rankTexasHoldem() const {
         // Congratulations! You have a four of a kind!
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
-        return HandRanking::create(HandRanking::FOUR_OF_A_KIND, four_of_a_kind, highest_bit_ranking(colorless));
+        return HandRanking::create(HandRanking::FOUR_OF_A_KIND, four_of_a_kind,
+                highest_bit_ranking(colorless));
     }
 
     // Straight:
@@ -220,7 +247,8 @@ HandRanking CardSet::rankTexasHoldem() const {
     straight = straight & (straight << 6);
     straight = straight & (straight_bits << 12);
     if (unlikely(straight != 0)) {
-        return HandRanking::with60bitHeight(HandRanking::STRAIGHT, highest_bit_ranking(straight));
+        return HandRanking::with60bitHeight(HandRanking::STRAIGHT,
+                highest_bit_ranking(straight));
     }
 
     // Three of a kind:
@@ -235,12 +263,13 @@ HandRanking CardSet::rankTexasHoldem() const {
         if (two_of_a_kind != 0) {
             // Full house!
             // There could still be multiple two-of-a-kind. Keep highest only.
-            return HandRanking::create(HandRanking::FULL_HOUSE, three_of_a_kind, highest_bit_ranking(two_of_a_kind));
+            return HandRanking::create(HandRanking::FULL_HOUSE, three_of_a_kind,
+                    highest_bit_ranking(two_of_a_kind));
         }
         uint64_t side_cards = erase_lowest_two_bits(colorless ^ three_of_a_kind);
-        return HandRanking::create(HandRanking::THREE_OF_A_KIND, three_of_a_kind, side_cards);
+        return HandRanking::create(HandRanking::THREE_OF_A_KIND, three_of_a_kind,
+                side_cards);
     }
-
 
 #ifdef __POPCNT__
     uint32_t pairs = _mm_popcnt_u64(two_of_a_kind);
@@ -259,12 +288,14 @@ HandRanking CardSet::rankTexasHoldem() const {
         uint64_t tok3 = lowest_bit(two_of_a_kind);
         // Kicker is either highest card not part of any pairs or one of the lowest pair cards.
         uint64_t side_cards = std::max(colorless ^ two_of_a_kind, tok3);
-        return HandRanking::create(HandRanking::TWO_PAIRS, two_of_a_kind ^ tok3, side_cards);
+        return HandRanking::create(HandRanking::TWO_PAIRS, two_of_a_kind ^ tok3,
+                side_cards);
     }
 
     // Zero to two pairs. Kicker are those cards that remain after removing the pairs and the lowest two cards.
     uint64_t side_cards = erase_lowest_two_bits(colorless ^ two_of_a_kind);
-    return HandRanking::create(static_cast<HandRanking::Ranking>(pairs), two_of_a_kind, side_cards);
+    return HandRanking::create(static_cast<HandRanking::Ranking>(pairs),
+            two_of_a_kind, side_cards);
 }
 
 CardSet::Table::Table() {
@@ -279,19 +310,19 @@ CardSet::Table::Table() {
 CardSet::Table CardSet::card_table;
 
 FastDeck::FastDeck() {
-    sfmt_init_gen_rand(&sfmt, 12345);
-    __m128i* cv= reinterpret_cast<__m128i*>(cards);
-    cv[0] = _mm_setr_epi8(_2C.value, _3C.value, _4C.value, _5C.value, _6C.value,
-            _7C.value, _8C.value, _9C.value, _TC.value, _JC.value, _QC.value,
-            _KC.value, _AC.value, _2D.value, _3D.value, _4D.value);
-    cv[1] = _mm_setr_epi8(_5D.value, _6D.value, _7D.value, _8D.value, _9D.value,
-            _TD.value, _JD.value, _QD.value, _KD.value, _AD.value, _2H.value,
-            _3H.value, _4H.value, _5H.value, _6H.value, _7H.value);
-    cv[2] = _mm_setr_epi8(_8H.value, _9H.value, _TH.value, _JH.value, _QH.value,
-            _KH.value, _AH.value, _2S.value, _3S.value, _4S.value, _5S.value,
-            _6S.value, _7S.value, _8S.value, _9S.value, _TS.value);
-    cv[3] = _mm_setr_epi8(_JS.value, _QS.value, _KS.value, _AS.value, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0);
+sfmt_init_gen_rand(&sfmt, 12345);
+__m128i* cv= reinterpret_cast<__m128i*>(cards);
+cv[0] = _mm_setr_epi8(_2C.value, _3C.value, _4C.value, _5C.value, _6C.value,
+        _7C.value, _8C.value, _9C.value, _TC.value, _JC.value, _QC.value,
+        _KC.value, _AC.value, _2D.value, _3D.value, _4D.value);
+cv[1] = _mm_setr_epi8(_5D.value, _6D.value, _7D.value, _8D.value, _9D.value,
+        _TD.value, _JD.value, _QD.value, _KD.value, _AD.value, _2H.value,
+        _3H.value, _4H.value, _5H.value, _6H.value, _7H.value);
+cv[2] = _mm_setr_epi8(_8H.value, _9H.value, _TH.value, _JH.value, _QH.value,
+        _KH.value, _AH.value, _2S.value, _3S.value, _4S.value, _5S.value,
+        _6S.value, _7S.value, _8S.value, _9S.value, _TS.value);
+cv[3] = _mm_setr_epi8(_JS.value, _QS.value, _KS.value, _AS.value, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0);
 }
 
 } /* namespace poker */
