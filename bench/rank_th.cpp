@@ -4,6 +4,7 @@
 #include <memory>
 #include <string.h>
 #include <iostream>
+#include <algorithm>
 
 namespace poker {
 
@@ -74,7 +75,7 @@ void BM_fast_deck_deal(benchmark::State& state) {
     FastDeck deck;
     for (auto _ : state) {
         deck.shuffle();
-        for (int i = 0; i < 8*2+5; ++i) {
+        for (int i = 0; i < 8 * 2 + 5; ++i) {
             benchmark::DoNotOptimize(deck.deal());
         }
     }
@@ -105,7 +106,9 @@ BENCHMARK(BM_deal_full_table_th);
 
 class RankTable {
 public:
-    RankTable() {memset(count,0,9*sizeof(uint32_t));}
+    RankTable() {
+        memset(count, 0, 9 * sizeof(uint32_t));
+    }
 
     void add(HandRanking ranking) {
         count[static_cast<int>(ranking.getRanking())]++;
@@ -114,7 +117,7 @@ public:
 
     void print() {
         std::cout << "sum: " << sum << std::endl;
-        for(int i=0; i<9; ++i) {
+        for (int i = 0; i < 9; ++i) {
             double frac = 1.0 * count[i] / sum;
             std::cout << i << ": " << count[i] << " = " << frac << std::endl;
         }
@@ -150,6 +153,95 @@ void BM_deal_and_rank_full_table_th(benchmark::State& state) {
 }
 BENCHMARK(BM_deal_and_rank_full_table_th);
 
+#define min(x, y) (x<y?x:y)
+#define max(x, y) (x<y?y:x)
+#define SWAP(x,y) {  HandRanking a = min(d[x], d[y]); \
+        HandRanking b = max(d[x], d[y]); d[x] = a; d[y] = b;}
+
+void sort8(HandRanking d[8]) {
+    SWAP(0, 1);
+    SWAP(2, 3);
+    SWAP(0, 2);
+    SWAP(1, 3);
+    SWAP(1, 2);
+    SWAP(4, 5);
+    SWAP(6, 7);
+    SWAP(4, 6);
+    SWAP(5, 7);
+    SWAP(5, 6);
+    SWAP(0, 4);
+    SWAP(1, 5);
+    SWAP(1, 4);
+    SWAP(2, 6);
+    SWAP(3, 7);
+    SWAP(3, 6);
+    SWAP(2, 4);
+    SWAP(3, 5);
+    SWAP(3, 4);
+}
+
+template<typename RandIt>
+void insertion_sort(RandIt begin, RandIt end)
+{
+    for (auto i = begin + 1; i != end; ++i)
+    {
+        auto key = *i;
+        auto j = i - 1;
+
+        while (j >= begin and *j > key)
+        {
+            *(j + 1) = *j;
+            --j;
+        }
+
+        *(j + 1) = key;
+    }
+}
+
+void BM_rank_sort_full_table_th(benchmark::State& state) {
+    FastDeck deck;
+    RankTable rt;
+    for (auto _ : state) {
+        deck.shuffle();
+        CardSet table;
+        for (int i = 0; i < 5; ++i) {
+            table.add(deck.deal());
+        }
+
+        CardSet player[8];
+        for (int i = 0; i < 8; ++i) {
+            player[i].addAll(table);
+            player[i].add(deck.deal());
+            player[i].add(deck.deal());
+        }
+
+        HandRanking rank[8];
+        for (int i = 0; i < 8; ++i) {
+            rank[i] = player[i].rankTexasHoldem();
+        }
+        /*for (int i = 1; i < 8; ++i) {
+            HandRanking r = rank[i];
+            std::sort(r)
+            int j = 0;
+            while (j < i && rank[j] < r) {
+                j++;
+            }
+            std::swap(rank[i], rank[j]);
+        }*/
+        //insertion_sort(rank, rank+8);
+        sort8(rank);
+        std::sort(rank, rank+8);
+        for(int i= 0; i<7; ++i) {
+            if (rank[i] > rank[i+1]) {
+                throw new std::runtime_error("invalid sorting");
+            }
+        }
+        benchmark::DoNotOptimize(rank[0]);
+    }
+    //rt.print();
+}
+BENCHMARK(BM_rank_sort_full_table_th);
+
 void BM_rank_full_table_th(benchmark::State& state) {
     constexpr int tables = 100;
 
@@ -157,14 +249,14 @@ void BM_rank_full_table_th(benchmark::State& state) {
     RankTable rt;
     std::unique_ptr<CardSet[]> hands(new CardSet[8 * tables]);
 
-    for(int t = 0; t<tables; ++t) {
+    for (int t = 0; t < tables; ++t) {
         deck.shuffle();
         CardSet table;
         for (int i = 0; i < 5; ++i) {
             table.add(deck.deal());
         }
 
-        CardSet* player = &hands[8*t];
+        CardSet* player = &hands[8 * t];
         for (int i = 0; i < 8; ++i) {
             player[i].addAll(table);
             player[i].add(deck.deal());
@@ -174,7 +266,7 @@ void BM_rank_full_table_th(benchmark::State& state) {
 
     for (auto _ : state) {
         for (int i = 0; i < 8 * tables; ++i) {
-            poker::HandRanking r = hands[i].rankTexasHoldem();
+            HandRanking r = hands[i].rankTexasHoldem();
             benchmark::DoNotOptimize(r);
             //rt.add(r);
             //std::cout << "r = " << r.getRanking() << std::endl;

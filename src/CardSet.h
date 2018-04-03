@@ -118,6 +118,8 @@ public:
         STRAIGHT_FLUSH = 8,
     };
 
+    HandRanking() = default;
+
     bool operator<(const HandRanking& other) const {
         return value < other.value;
     }
@@ -148,8 +150,6 @@ private:
 
     constexpr static int RANKING_SHIFT = 2 * 28;
     constexpr static int HEIGHT_SHIFT = 28;
-
-    HandRanking() = default;
 
     HandRanking(Ranking ranking, uint32_t height, uint32_t side_cards) {
         value = (static_cast<uint64_t>(ranking) << RANKING_SHIFT)
