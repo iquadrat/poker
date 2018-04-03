@@ -109,32 +109,8 @@ uint32_t highest_bit_ranking(uint64_t v) {
     return -__builtin_clzll(v);
 }
 
-/*uint32_t trailing_zeros64(uint64_t v) {
- return __builtin_ctzll(v);
- }*/
-
 uint32_t trailing_zeros32(uint32_t v) {
     return __builtin_ctz(v);
-}
-
-template<typename F>
-inline __m128i combine4(__m128i v, F f) {
-    __m128i r = f(v, _mm_shuffle_epi32(v, _MM_SHUFFLE(2,3,0,1)));
-    return f(r, _mm_shuffle_epi32(r, _MM_SHUFFLE(1,0,3,2)));
-}
-
-inline __m128i and4(__m128i v) {
-    return combine4(v, [](__m128i a, __m128i b) {return _mm_and_si128(a,b);});
-}
-
-inline __m128i vand(__m128i a, __m128i b) {
-    return _mm_and_si128(a, b);
-}
-inline __m128i vor(__m128i a, __m128i b) {
-    return _mm_or_si128(a, b);
-}
-inline __m128i vadd(__m128i a, __m128i b) {
-    return _mm_add_epi32(a, b);
 }
 
 #if CARD_CHECKS
