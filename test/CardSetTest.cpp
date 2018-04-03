@@ -30,6 +30,18 @@ TEST(Card, ToString) {
     EXPECT_EQ("AC", c3.toString());
 }
 
+TEST(HandRanking, Compare) {
+    HandRanking rank0 = CardSet({_7C, _7H, _6D, _KD, _KH, _6C, _AD}).rankTexasHoldem();
+    HandRanking rank1 = CardSet({_7C, _7H, _7D, _KD, _KH, _JC, _AD}).rankTexasHoldem();
+
+    EXPECT_EQ(rank0, rank0);
+    //EXPECT_GT(rank1, rank0);
+    EXPECT_TRUE(rank0 < rank1);
+    EXPECT_FALSE(rank1 < rank0);
+
+
+}
+
 TEST(CardSet, Empty) {
     CardSet cs;
     EXPECT_EQ(0, cs.size());

@@ -16,6 +16,21 @@
 
 namespace poker {
 
+inline bool all_zeros(__m128i v) {
+#ifdef __SSE4_1__
+    return _mm_testz_si128(v, v);
+#endif
+    return _mm_movemask_epi8(_mm_cmpeq_epi32(v, _mm_setzero_si128()))
+            == 0xffff;
+}
+
+inline bool all_zeros(__m128i v, __m128i mask) {
+#ifdef __SSE4_1__
+    return _mm_testz_si128(v, mask);
+#endif
+    return all_zeros(_mm_and_si128(v, mask));
+}
+
 enum class Color {
     CLUBS = 0, DIAMONDS = 1, HEARTS = 2, SPADES = 3,
 };
@@ -112,15 +127,24 @@ public:
         STRAIGHT_FLUSH = 8,
     };
 
+    HandRanking() = default;
+
     bool operator<(const HandRanking& other) const {
-        if (value_hi == other.value_hi) {
+        __m128i eq = _mm_cmpeq_epi64(other.value, value);
+        __m128i lt = _mm_cmpgt_epi64(other.value, value);
+
+        __m128i unpack = _mm_unpacklo_epi64(lt, eq);
+        return !all_zeros(lt, unpack);
+
+/*        if (value_hi == other.value_hi) {
             return value_lo < other.value_lo;
         }
-        return value_hi < other.value_hi;
+        return value_hi < other.value_hi;*/
     }
 
     bool operator==(const HandRanking& other) const {
-        return (value_hi == other.value_hi) && (value_lo == other.value_lo);
+        return all_zeros(_mm_xor_si128(value, other.value));
+        //return (value_hi == other.value_hi) && (value_lo == other.value_lo);
     }
 
     friend bool operator<=(const HandRanking & a, const HandRanking & b) {
@@ -137,27 +161,27 @@ public:
     }
 
     Ranking getRanking() const {
-        return static_cast<Ranking>(value_hi >> RANKING_SHIFT);
+        uint64_t bits = _mm_cvtsi128_si64x(value);
+        return static_cast<Ranking>(bits >> RANKING_SHIFT);
     }
 
 private:
     friend class CardSet;
 
-    constexpr static int RANKING_SHIFT = 60;
-
-    HandRanking() = default;
+    constexpr static int RANKING_SHIFT = 59;
 
     HandRanking(uint64_t value_hi): HandRanking(value_hi, 0) {}
 
-    HandRanking(uint64_t value_hi, uint64_t value_lo): value_hi(value_hi), value_lo(value_lo) {}
+    HandRanking(uint64_t value_hi, uint64_t value_lo): value(_mm_set_epi64x(value_lo, value_hi)) {}
 
     static HandRanking create(Ranking ranking, uint64_t height, uint64_t side_cards);
     static HandRanking with18bitHeight(Ranking ranking, uint32_t height, uint64_t side_cards);
     static HandRanking with42bitHeight(Ranking ranking, uint64_t height, uint32_t side_cards);
     static HandRanking with60bitHeight(Ranking ranking, uint64_t height);
 
-    uint64_t value_hi;
-    uint64_t value_lo;
+    /*uint64_t value_hi;
+    uint64_t value_lo;*/
+    __m128i value;
 };
 
 class CardSet {
@@ -253,21 +277,6 @@ private:
 #else
         return _mm_cvtsi128_si64x(_mm_shuffle_epi32(cv, -1));
 #endif
-    }
-
-    static bool all_zeros(__m128i v) {
-#ifdef __SSE4_1__
-        return _mm_testz_si128(v, v);
-#endif
-        return _mm_movemask_epi8(_mm_cmpeq_epi32(v, _mm_setzero_si128()))
-                == 0xffff;
-    }
-
-    static bool all_zeros(__m128i v, __m128i mask) {
-#ifdef __SSE4_1__
-        return _mm_testz_si128(v, mask);
-#endif
-        return all_zeros(_mm_and_si128(v, mask));
     }
 
     static Table card_table;

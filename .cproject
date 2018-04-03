@@ -142,7 +142,7 @@
 								<option id="gnu.cpp.compiler.exe.debug.option.optimization.level.515235856" name="Optimization Level" superClass="gnu.cpp.compiler.exe.debug.option.optimization.level" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.exe.debug.option.debugging.level.1758492636" name="Debug Level" superClass="gnu.cpp.compiler.exe.debug.option.debugging.level" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.dialect.std.1266764829" name="Language standard" superClass="gnu.cpp.compiler.option.dialect.std" value="gnu.cpp.compiler.dialect.c++11" valueType="enumerated"/>
-								<option id="gnu.cpp.compiler.option.optimization.flags.322412345" name="Other optimization flags" superClass="gnu.cpp.compiler.option.optimization.flags" value="-mpopcnt -msse4.1" valueType="string"/>
+								<option id="gnu.cpp.compiler.option.optimization.flags.322412345" name="Other optimization flags" superClass="gnu.cpp.compiler.option.optimization.flags" value="-mpopcnt -msse4.1 -msse4.2" valueType="string"/>
 								<option id="gnu.cpp.compiler.option.include.paths.772387923" name="Include paths (-I)" superClass="gnu.cpp.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}}/src&quot;"/>
 								</option>
@@ -207,7 +207,7 @@
 							<tool id="cdt.managedbuild.tool.gnu.archiver.base.1763257210" name="GCC Archiver" superClass="cdt.managedbuild.tool.gnu.archiver.base"/>
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.1060696569" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug">
 								<option id="gnu.cpp.compiler.exe.debug.option.optimization.level.585351800" name="Optimization Level" superClass="gnu.cpp.compiler.exe.debug.option.optimization.level" value="gnu.cpp.compiler.optimization.level.more" valueType="enumerated"/>
-								<option id="gnu.cpp.compiler.exe.debug.option.debugging.level.949174356" name="Debug Level" superClass="gnu.cpp.compiler.exe.debug.option.debugging.level" value="gnu.cpp.compiler.debugging.level.none" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.exe.debug.option.debugging.level.949174356" name="Debug Level" superClass="gnu.cpp.compiler.exe.debug.option.debugging.level" value="gnu.cpp.compiler.debugging.level.default" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.dialect.std.397324568" name="Language standard" superClass="gnu.cpp.compiler.option.dialect.std" value="gnu.cpp.compiler.dialect.c++11" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.include.paths.806958266" name="Include paths (-I)" superClass="gnu.cpp.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}}/src&quot;"/>
@@ -215,7 +215,7 @@
 								<option id="gnu.cpp.compiler.option.preprocessor.def.517104189" name="Defined symbols (-D)" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="SFMT_MEXP=607"/>
 								</option>
-								<option id="gnu.cpp.compiler.option.optimization.flags.1869587550" name="Other optimization flags" superClass="gnu.cpp.compiler.option.optimization.flags" value="-mpopcnt -msse4.1 -march=native -funroll-loops" valueType="string"/>
+								<option id="gnu.cpp.compiler.option.optimization.flags.1869587550" name="Other optimization flags" superClass="gnu.cpp.compiler.option.optimization.flags" value="-march=native -funroll-loops" valueType="string"/>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1337842875" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.exe.debug.670822646" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.exe.debug">
