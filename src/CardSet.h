@@ -130,21 +130,11 @@ public:
     HandRanking() = default;
 
     bool operator<(const HandRanking& other) const {
-        __m128i eq = _mm_cmpeq_epi64(other.value, value);
-        __m128i lt = _mm_cmpgt_epi64(other.value, value);
-
-        __m128i unpack = _mm_unpacklo_epi64(lt, eq);
-        return !all_zeros(lt, unpack);
-
-/*        if (value_hi == other.value_hi) {
-            return value_lo < other.value_lo;
-        }
-        return value_hi < other.value_hi;*/
+        return value < other.value;
     }
 
     bool operator==(const HandRanking& other) const {
-        return all_zeros(_mm_xor_si128(value, other.value));
-        //return (value_hi == other.value_hi) && (value_lo == other.value_lo);
+        return value == other.value;
     }
 
     friend bool operator<=(const HandRanking & a, const HandRanking & b) {
@@ -161,33 +151,26 @@ public:
     }
 
     Ranking getRanking() const {
-        uint64_t bits = _mm_cvtsi128_si64x(value);
-        return static_cast<Ranking>(bits >> RANKING_SHIFT);
+        return static_cast<Ranking>(value >> RANKING_SHIFT);
     }
 
 private:
     friend class CardSet;
 
-    constexpr static int RANKING_SHIFT = 59;
+    constexpr static int RANKING_SHIFT = 60;
 
-    HandRanking(uint64_t value_hi): HandRanking(value_hi, 0) {}
+    HandRanking(uint64_t value): value(value) {}
 
-    HandRanking(uint64_t value_hi, uint64_t value_lo): value(_mm_set_epi64x(value_lo, value_hi)) {}
+    static HandRanking create(Ranking ranking, uint32_t height, uint32_t side_cards);
+    static HandRanking create(Ranking ranking, uint32_t height);
 
-    static HandRanking create(Ranking ranking, uint64_t height, uint64_t side_cards);
-    static HandRanking with18bitHeight(Ranking ranking, uint32_t height, uint64_t side_cards);
-    static HandRanking with42bitHeight(Ranking ranking, uint64_t height, uint32_t side_cards);
-    static HandRanking with60bitHeight(Ranking ranking, uint64_t height);
-
-    /*uint64_t value_hi;
-    uint64_t value_lo;*/
-    __m128i value;
+    uint64_t value;
 };
 
 class CardSet {
 public:
     static CardSet fullDeck() {
-        return _mm_set_epi64x(0x0d0d0d0d3fffffff, 0xfffffe4924924924);
+        return _mm_set_epi64x(0x3ffe3ffe3ffe3ffe, 0x0d0d0d0d24924940);
     }
 
     CardSet() {
@@ -218,11 +201,10 @@ public:
     }
 
     bool contains(Card c) const {
-        uint32_t rank = static_cast<uint32_t>(c.getRank());
+        uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
         uint32_t color = static_cast<uint32_t>(c.getColor());
-        uint64_t card_bits = _mm_cvtsi128_si64x(_mm_srli_si128(cv, 5));
-        uint64_t bit = 13 * color + rank + 2;
-        return (card_bits & (static_cast<uint64_t>(1) << bit)) != 0;
+        uint64_t card_bits = static_cast<uint64_t>(1) << (16 * color + rank);
+        return !all_zeros(cv, _mm_set_epi64x(card_bits, 0));
     }
 
     void add(Card c) {
@@ -272,11 +254,7 @@ private:
     };
 
     uint32_t color_cnts() const {
-#ifdef __SSE4_1__
-        return _mm_extract_epi32(cv, 3);
-#else
-        return _mm_cvtsi128_si64x(_mm_shuffle_epi32(cv, -1));
-#endif
+        return _mm_cvtsi128_si64x(cv) >> 32;
     }
 
     static Table card_table;
@@ -291,18 +269,16 @@ private:
 
     static __m128i internalToCardVec(Card c) {
         constexpr uint64_t one = 1;
-        uint32_t rank = static_cast<uint32_t>(c.getRank());
+        uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
         uint32_t color = static_cast<uint32_t>(c.getColor());
-        __m128i card_bits = _mm_set_epi64x(0, one << (13 * color + rank + 2));
-        __m128i card_cnts = _mm_set_epi64x(0, one << (3 * (rank + 1)));
-        __m128i color_cnts = _mm_set_epi64x(0, one << (8 * color));
-        return _mm_or_si128(card_cnts,
-                  _mm_or_si128(_mm_slli_si128(card_bits, 5),
-                               _mm_slli_si128(color_cnts, 12)));
+        uint64_t card_bits = one << (16 * color + rank);
+        uint64_t card_cnts = one << (2 * rank);
+        uint64_t color_cnts = one << (8 * color + 32);
+        return _mm_set_epi64x(card_bits, card_cnts | color_cnts);
     }
 
     static __m128i cardMask() {
-        return _mm_set_epi64x(0x000000003fffffff, 0xfffffc0000000000);
+        return _mm_set_epi64x(-1, 0);
     }
 
     CardSet(__m128i cv) :
