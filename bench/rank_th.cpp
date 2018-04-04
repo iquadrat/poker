@@ -230,12 +230,12 @@ void BM_rank_sort_full_table_th(benchmark::State& state) {
         }*/
         //insertion_sort(rank, rank+8);
         sort8(rank);
-        std::sort(rank, rank+8);
-        for(int i= 0; i<7; ++i) {
+        //std::sort(rank, rank+8);
+/*        for(int i= 0; i<7; ++i) {
             if (rank[i] > rank[i+1]) {
                 throw new std::runtime_error("invalid sorting");
             }
-        }
+        }*/
         benchmark::DoNotOptimize(rank[0]);
     }
     //rt.print();

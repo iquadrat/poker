@@ -16,6 +16,21 @@
 
 namespace poker {
 
+inline bool all_zeros(__m128i v) {
+#ifdef __SSE4_1__
+    return _mm_testz_si128(v, v);
+#endif
+    return _mm_movemask_epi8(_mm_cmpeq_epi32(v, _mm_setzero_si128()))
+            == 0xffff;
+}
+
+inline bool all_zeros(__m128i v, __m128i mask) {
+#ifdef __SSE4_1__
+    return _mm_testz_si128(v, mask);
+#endif
+    return all_zeros(_mm_and_si128(v, mask));
+}
+
 enum class Color {
     CLUBS = 0, DIAMONDS = 1, HEARTS = 2, SPADES = 3,
 };
@@ -87,13 +102,7 @@ public:
     }
 
 private:
-    explicit Card(uint8_t value) :
-            value(value) {
-#ifdef CARD_CHECKS
-        if (value >= COUNT)
-        throw new std::string("Invalid card value " + value);
-#endif
-    }
+    explicit Card(uint8_t value) : value(value) {}
 
     friend class FastDeck;
 
@@ -148,27 +157,24 @@ public:
 private:
     friend class CardSet;
 
-    constexpr static int RANKING_SHIFT = 2 * 28;
-    constexpr static int HEIGHT_SHIFT = 28;
+    constexpr static int RANKING_SHIFT = 60;
 
-    HandRanking(Ranking ranking, uint32_t height, uint32_t side_cards) {
-        value = (static_cast<uint64_t>(ranking) << RANKING_SHIFT)
-                | (static_cast<uint64_t>(height) << HEIGHT_SHIFT) | side_cards;
-    }
+    HandRanking(uint64_t value): value(value) {}
 
-    uint64_t value;
+    static HandRanking create(Ranking ranking, uint32_t height, uint32_t side_cards);
+    static HandRanking create(Ranking ranking, uint32_t height);
+
+    uint64_t value = 0;
 };
 
 class CardSet {
 public:
     static CardSet fullDeck() {
-        CardVec cv;
-        cv.v = _mm_set1_epi32(0xd5555554);
-        return CardSet(cv);
+        return _mm_set_epi64x(0x3ffe3ffe3ffe3ffe, 0x0d0d0d0d24924940);
     }
 
     CardSet() {
-        cv.v = _mm_setzero_si128();
+        cv = _mm_setzero_si128();
     }
 
     template<typename C>
@@ -187,16 +193,18 @@ public:
     }
 
     uint32_t size() const {
-        __m128i count = _mm_srli_epi32(cv.v, 28);
-        count = _mm_hadd_epi32(count, count);
-        count = _mm_hadd_epi32(count, count);
-        return _mm_cvtsi128_si32(count);
+        uint64_t sum_bits = color_cnts();
+        return ((sum_bits) & 0xff) +
+               ((sum_bits >> 8) & 0xff) +
+               ((sum_bits >> 16) & 0xff) +
+               ((sum_bits >> 24) & 0xff);
     }
 
     bool contains(Card c) const {
-        CardVec v = toCardVec(c);
-        __m128i mask = _mm_and_si128(v.v, cardMask());
-        return !all_zeros(cv.v, mask);
+        uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
+        uint32_t color = static_cast<uint32_t>(c.getColor());
+        uint64_t card_bits = static_cast<uint64_t>(1) << (16 * color + rank);
+        return !all_zeros(cv, _mm_set_epi64x(card_bits, 0));
     }
 
     void add(Card c) {
@@ -206,8 +214,8 @@ public:
                     "Card already contained!" + c.toString());
         }
 #endif
-        CardVec cv = toCardVec(c);
-        this->cv.v = _mm_add_epi32(cv.v, this->cv.v);
+        __m128i cv = toCardVec(c);
+        this->cv = _mm_add_epi64(cv, this->cv);
     }
 
     void remove(Card c) {
@@ -216,18 +224,18 @@ public:
             throw new std::runtime_error("Card not contained!" + c.toString());
         }
 #endif
-        CardVec cv = toCardVec(c);
-        this->cv.v = _mm_sub_epi32(cv.v, this->cv.v);
+        __m128i cv = toCardVec(c);
+        this->cv = _mm_sub_epi64(cv, this->cv);
     }
 
     void addAll(const CardSet& cs) {
 #ifdef CARD_CHECKS
-        __m128i mask = _mm_and_si128(cs.cv.v, cardMask());
-        if (!all_zeros(this->cv.v, mask)) {
+        __m128i mask = _mm_and_si128(cs.cv, cardMask());
+        if (!all_zeros(this->cv, mask)) {
             throw new std::runtime_error("CardSets are not disjoint!");
         }
 #endif
-        this->cv.v = _mm_add_epi32(cs.cv.v, this->cv.v);
+        this->cv = _mm_add_epi64(cs.cv, this->cv);
     }
 
     HandRanking rankTexasHoldem() const;
@@ -235,39 +243,23 @@ public:
     std::vector<Card> toCardVector() const;
 
 private:
-    union CardVec {
-        uint32_t cards[4] = { 0, 0, 0, 0 };
-        __m128i v;
-    };
-
     class Table {
     public:
         Table();
-        CardVec operator[](uint8_t idx) {
+        __m128i operator[](uint8_t idx) {
             return cv[idx];
         }
     private:
-        CardVec cv[64];
+        __m128i cv[64];
     };
 
-    static bool all_zeros(__m128i v) {
-#ifdef __SSE4_1__
-        return _mm_testz_si128(v, v);
-#endif
-        return _mm_movemask_epi8(_mm_cmpeq_epi32(v, _mm_setzero_si128()))
-                == 0xffff;
-    }
-
-    static bool all_zeros(__m128i v, __m128i mask) {
-#ifdef __SSE4_1__
-        return _mm_testz_si128(v, mask);
-#endif
-        return all_zeros(_mm_and_si128(v, mask));
+    uint32_t color_cnts() const {
+        return _mm_cvtsi128_si64x(cv) >> 32;
     }
 
     static Table card_table;
 
-    static CardVec toCardVec(Card c) {
+    static __m128i toCardVec(Card c) {
 #ifdef NO_CARD_TABLE
         return internalToCardVec(c);
 #else
@@ -275,24 +267,25 @@ private:
 #endif
     }
 
-    static CardVec internalToCardVec(Card c) {
-        CardVec cv;
-        cv.v = _mm_setzero_si128();
-        uint32_t shift = 26 - static_cast<uint32_t>(c.getRank()) * 2;
-        cv.cards[static_cast<uint32_t>(c.getColor())] = (1 << 28)
-                | ((1 << 28) >> shift);
-        return cv;
+    static __m128i internalToCardVec(Card c) {
+        constexpr uint64_t one = 1;
+        uint32_t rank = static_cast<uint32_t>(c.getRank()) + 1;
+        uint32_t color = static_cast<uint32_t>(c.getColor());
+        uint64_t card_bits = one << (16 * color + rank);
+        uint64_t card_cnts = one << (2 * rank);
+        uint64_t color_cnts = one << (8 * color + 32);
+        return _mm_set_epi64x(card_bits, card_cnts | color_cnts);
     }
 
     static __m128i cardMask() {
-        return _mm_set1_epi32((1 << 28) - 1);
+        return _mm_set_epi64x(-1, 0);
     }
 
-    CardSet(const CardVec& cv) :
+    CardSet(__m128i cv) :
             cv(cv) {
     }
 
-    CardVec cv;
+    __m128i cv;
 };
 
 class FastDeck {
