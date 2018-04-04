@@ -106,11 +106,10 @@ uint32_t erase_lowest_two_bits(uint32_t v) {
 }
 
 uint32_t highest_bit_ranking(uint32_t v) {
-    uint16_t bit = -__builtin_clz(v);
-    return bit;
+	return -__builtin_clz(v);
 }
 
-uint32_t trailing_zeros32(uint32_t v) {
+uint32_t trailing_zeros(uint32_t v) {
     return __builtin_ctz(v);
 }
 
@@ -146,14 +145,11 @@ inline __m128i vadd(__m128i a, __m128i b) {
 HandRanking HandRanking::create(Ranking ranking, uint32_t height,
     uint32_t side_cards) {
 #if CARD_CHECKS
-if (has_upper_bit_set(height, 30)) {
+if (has_upper_bit_set(height, 28)) {
     throw new std::runtime_error("Invalid height");
 }
-if (has_upper_bit_set(side_cards, 30)) {
-    throw new std::runtime_error("Invalid side_cards");
-}
 #endif
-    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | (static_cast<uint64_t>(height) << 30) | side_cards);
+    return HandRanking((static_cast<uint64_t>(ranking) << RANKING_SHIFT) | (static_cast<uint64_t>(height) << 32) | side_cards);
 }
 
 HandRanking HandRanking::create(Ranking ranking, uint32_t height) {
@@ -168,7 +164,7 @@ HandRanking CardSet::rankTexasHoldem() const {
 #endif
     __m128i flush = _mm_cmpgt_epi8(cv, _mm_set1_epi8(4));
     if (unlikely(!all_zeros(flush, _mm_set_epi32(0, 0, -1, 0)))) {
-        uint32_t color = trailing_zeros32(_mm_movemask_epi8(flush) >> 4);
+        uint32_t color = trailing_zeros(_mm_movemask_epi8(flush) >> 4);
         uint16_t flush_cards = _mm_extract_epi64(cv, 1) >> (color * 16);
 
         uint32_t flush_cards_dup = flush_cards | (flush_cards >> 13);
@@ -198,7 +194,7 @@ HandRanking CardSet::rankTexasHoldem() const {
         // Note that this makes straight flush impossible at the same time.
         // Now need the highest card not part of the poker as side card.
         uint32_t fok = _mm_extract_epi16(four_of_a_kind, 5);
-        uint32_t fok_bit = (4 << (trailing_zeros32(fok) * 2));
+        uint32_t fok_bit = (4 << (trailing_zeros(fok) * 2));
         sum_bits -= fok_bit;
         uint32_t side_cards = (sum_bits | (sum_bits << 1)) & 0x2aaaaaaa;
 
@@ -241,7 +237,7 @@ HandRanking CardSet::rankTexasHoldem() const {
     }
 
 #ifdef __POPCNT__
-    uint32_t pairs = _mm_popcnt_u64(two_of_a_kind);
+    uint32_t pairs = _mm_popcnt_u32(two_of_a_kind);
     bool has_three_pairs = (pairs == 3);
 #else
     // Emulate popcnt for 0-2 bits:
